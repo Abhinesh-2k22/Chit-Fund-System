@@ -1,0 +1,19 @@
+MongoDB would be better for user details because:
+    User profiles often have varying attributes and MongoDB's flexible schema is perfect for this
+    Easy to add new fields without schema migrations
+    Better for storing nested data like address, preferences, etc.
+    Good for storing user documents, profile pictures, and other unstructured data
+    Better scalability for user-related operations
+MySQL would be better used for:
+    Financial transactions (where ACID compliance is crucial)
+    Audit logs
+    Payment records
+    Bidding history
+    Group financial summaries
+    Reports that require complex joins and aggregations
+Neo4j would be excellent for:
+    User relationships and connections
+    Group membership networks
+    Trust relationships between users
+    Referral networks
+    Social connections within the platform
