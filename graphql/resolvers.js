@@ -3,13 +3,27 @@ import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import User from '../models/User.js';
+import Group from '../models/Group.js';
 import { 
   createUserNode, 
   createConnectionRequest, 
   acceptConnectionRequest,
   getPendingRequests,
   getUserConnections,
-  removeConnection
+  removeConnection,
+  createGroupNode,
+  addGroupParticipant,
+  removeGroupParticipant,
+  getUserGroups,
+  getGroupParticipants,
+  getGroupWinners,
+  isGroupOwner,
+  isGroupParticipant,
+  recordWinner,
+  createGroupInvite,
+  getPendingGroupInvites,
+  acceptGroupInvite,
+  rejectGroupInvite
 } from '../config/neo4j.js';
 
 dotenv.config();
@@ -67,18 +81,92 @@ const resolvers = {
       }).select('username email mobile');
       
       return connectedUsers;
+    },
+
+    // Group queries
+    myGroups: async (_, __, { user }) => {
+      if (!user) throw new Error('Not authenticated');
+      
+      const groups = await getUserGroups(user.username);
+      return Group.find({ _id: { $in: groups.map(g => g.groupId) } });
+    },
+
+    groupDetails: async (_, { groupId }, { user }) => {
+      if (!user) throw new Error('Not authenticated');
+      
+      const isParticipant = await isGroupParticipant(groupId, user.username);
+      if (!isParticipant) throw new Error('Not authorized to view this group');
+      
+      const group = await Group.findById(groupId);
+      if (!group) throw new Error('Group not found');
+
+      // Get owner details from User model
+      const owner = await User.findOne({ username: group.owner }).select('username email mobile');
+      return {
+        ...group.toObject(),
+        owner
+      };
+    },
+
+    groupParticipants: async (_, { groupId }, { user }) => {
+      if (!user) throw new Error('Not authenticated');
+      
+      const isParticipant = await isGroupParticipant(groupId, user.username);
+      if (!isParticipant) throw new Error('Not authorized to view this group');
+      
+      return getGroupParticipants(groupId);
+    },
+
+    groupWinners: async (_, { groupId }, { user }) => {
+      if (!user) throw new Error('Not authenticated');
+      
+      const isParticipant = await isGroupParticipant(groupId, user.username);
+      if (!isParticipant) throw new Error('Not authorized to view this group');
+      
+      return getGroupWinners(groupId);
     }
   },
 
   Mutation: {
     register: async (_, { username, email, password, mobile, age, gender }) => {
       try {
+        // Check if username conflicts with any existing email or mobile
+        const existingUserWithUsernameConflict = await User.findOne({
+          $or: [
+            { email: username },
+            { mobile: username }
+          ]
+        });
+        
+        if (existingUserWithUsernameConflict) {
+          throw new Error('Username cannot be the same as another user\'s email or mobile number');
+        }
+
+        // Check if email or mobile conflicts with any existing username
+        const existingUserWithEmailMobileConflict = await User.findOne({
+          $or: [
+            { username: email },
+            { username: mobile }
+          ]
+        });
+
+        if (existingUserWithEmailMobileConflict) {
+          throw new Error('Email or mobile number cannot be the same as another user\'s username');
+        }
+
         // Check if user already exists with email or mobile
         const existingUser = await User.findOne({
-          $or: [{ email }, { mobile }]
+          $or: [
+            { email },
+            { mobile },
+            { username }
+          ]
         });
         
         if (existingUser) {
+          if (existingUser.username === username) {
+            throw new Error('Username already taken');
+          }
           if (existingUser.email === email) {
             throw new Error('Email already registered');
           }
@@ -136,13 +224,14 @@ const resolvers = {
       }
     },
 
-    login: async (_, { emailOrMobile, password }) => {
+    login: async (_, { usernameOrEmailOrMobile, password }) => {
       try {
-        // Find user by email or mobile
+        // Find user by username, email or mobile
         const user = await User.findOne({
           $or: [
-            { email: emailOrMobile },
-            { mobile: emailOrMobile }
+            { username: usernameOrEmailOrMobile },
+            { email: usernameOrEmailOrMobile },
+            { mobile: usernameOrEmailOrMobile }
           ]
         });
 
@@ -254,6 +343,148 @@ const resolvers = {
       await removeConnection(user.username, targetUsername);
       
       return true;
+    },
+
+    // Group mutations
+    createGroup: async (_, { name, totalPoolAmount, totalMonths }, { user }) => {
+      if (!user) throw new Error('Not authenticated');
+
+      try {
+        // Create group in MongoDB with username as owner
+        const group = new Group({
+          name,
+          owner: user.username,
+          totalPoolAmount,
+          totalMonths
+        });
+
+        await group.save();
+
+        // Create group node and relationships in Neo4j
+        await createGroupNode(group._id.toString(), name, user.username);
+
+        // Get owner details for response
+        const owner = await User.findOne({ username: user.username }).select('username email mobile');
+        return {
+          ...group.toObject(),
+          owner
+        };
+      } catch (error) {
+        throw new Error(error.message);
+      }
+    },
+
+    inviteToGroup: async (_, { groupId, username }, { user }) => {
+      if (!user) throw new Error('Not authenticated');
+
+      try {
+        const isOwner = await isGroupOwner(groupId, user.username);
+        if (!isOwner) throw new Error('Only group owner can invite participants');
+
+        const group = await Group.findById(groupId);
+        if (!group) throw new Error('Group not found');
+        if (group.status === 'started') throw new Error('Cannot invite to a started group');
+
+        // Check if user is already a participant
+        const isParticipant = await isGroupParticipant(groupId, username);
+        if (isParticipant) {
+          throw new Error('User is already a participant in this group');
+        }
+
+        // Check if user already has a pending invitation
+        const pendingInvites = await getPendingGroupInvites(username);
+        const hasPendingInvite = pendingInvites.some(invite => invite.groupId === groupId);
+        if (hasPendingInvite) {
+          throw new Error('User already has a pending invitation to this group');
+        }
+
+        // Create invitation in Neo4j
+        await createGroupInvite(groupId, user.username, username);
+        return true;
+      } catch (error) {
+        throw new Error(error.message);
+      }
+    },
+
+    acceptGroupInvite: async (_, { groupId }, { user }) => {
+      if (!user) throw new Error('Not authenticated');
+
+      try {
+        const group = await Group.findById(groupId);
+        if (!group) throw new Error('Group not found');
+        if (group.status === 'started') throw new Error('Cannot join a started group');
+
+        // Accept invitation in Neo4j
+        await acceptGroupInvite(groupId, user.username);
+        return true;
+      } catch (error) {
+        // If the error is from Neo4j about no invitation, return false
+        if (error.message === 'No invitation found for this group') {
+          return false;
+        }
+        // For other errors, throw them
+        throw new Error(error.message);
+      }
+    },
+
+    rejectGroupInvite: async (_, { groupId }, { user }) => {
+      if (!user) throw new Error('Not authenticated');
+
+      try {
+        const group = await Group.findById(groupId);
+        if (!group) throw new Error('Group not found');
+
+        // Reject invitation in Neo4j
+        await rejectGroupInvite(groupId, user.username);
+        return true;
+      } catch (error) {
+        throw new Error(error.message);
+      }
+    },
+
+    startGroup: async (_, { groupId }, { user }) => {
+      if (!user) throw new Error('Not authenticated');
+
+      try {
+        const isOwner = await isGroupOwner(groupId, user.username);
+        if (!isOwner) throw new Error('Only group owner can start the group');
+
+        const group = await Group.findById(groupId);
+        if (!group) throw new Error('Group not found');
+        if (group.status === 'started') throw new Error('Group is already started');
+
+        // Check if group can be started
+        const canStart = await group.canStart();
+        if (!canStart) throw new Error('Cannot start group: insufficient participants');
+
+        group.status = 'started';
+        group.shuffleDate = new Date();
+        await group.save();
+
+        return true;
+      } catch (error) {
+        throw new Error(error.message);
+      }
+    },
+
+    recordWinner: async (_, { groupId, username, month, amount }, { user }) => {
+      if (!user) throw new Error('Not authenticated');
+
+      try {
+        const isOwner = await isGroupOwner(groupId, user.username);
+        if (!isOwner) throw new Error('Only group owner can record winners');
+
+        const group = await Group.findById(groupId);
+        if (!group) throw new Error('Group not found');
+        if (group.status !== 'started') throw new Error('Group is not started');
+
+        // Record winner in Neo4j
+        await recordWinner(groupId, username, month, amount);
+
+        return true;
+      } catch (error) {
+        throw new Error(error.message);
+      }
     }
   }
 };

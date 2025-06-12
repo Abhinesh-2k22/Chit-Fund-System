@@ -26,6 +26,149 @@ export const createUserNode = async (username) => {
   }
 };
 
+// Create a group node and owner relationship
+export const createGroupNode = async (groupId, groupName, ownerUsername) => {
+  const session = driver.session();
+  try {
+    await session.run(
+      `CREATE (g:Group {id: $groupId, name: $groupName})
+       WITH g
+       MATCH (u:User {username: $ownerUsername})
+       CREATE (u)-[:OWNS]->(g)
+       CREATE (u)-[:PARTICIPATES_IN {joinedAt: datetime()}]->(g)`,
+      { groupId, groupName, ownerUsername }
+    );
+    console.log(`Created Neo4j node for group: ${groupName}`);
+  } catch (error) {
+    console.error('Error creating group node:', error);
+    throw error;
+  } finally {
+    await session.close();
+  }
+};
+
+// Add participant to group
+export const addGroupParticipant = async (groupId, username) => {
+  const session = driver.session();
+  try {
+    await session.run(
+      `MATCH (u:User {username: $username})
+       MATCH (g:Group {id: $groupId})
+       CREATE (u)-[:PARTICIPATES_IN {joinedAt: datetime()}]->(g)`,
+      { groupId, username }
+    );
+    console.log(`Added participant ${username} to group ${groupId}`);
+  } catch (error) {
+    console.error('Error adding group participant:', error);
+    throw error;
+  } finally {
+    await session.close();
+  }
+};
+
+// Remove participant from group
+export const removeGroupParticipant = async (groupId, username) => {
+  const session = driver.session();
+  try {
+    await session.run(
+      `MATCH (u:User {username: $username})-[r:PARTICIPATES_IN]->(g:Group {id: $groupId})
+       DELETE r`,
+      { groupId, username }
+    );
+    console.log(`Removed participant ${username} from group ${groupId}`);
+  } catch (error) {
+    console.error('Error removing group participant:', error);
+    throw error;
+  } finally {
+    await session.close();
+  }
+};
+
+// Get all groups a user participates in
+export const getUserGroups = async (username) => {
+  const session = driver.session();
+  try {
+    const result = await session.run(
+      `MATCH (u:User {username: $username})-[:PARTICIPATES_IN]->(g:Group)
+       RETURN g.id as groupId, g.name as groupName`,
+      { username }
+    );
+    return result.records.map(record => ({
+      groupId: record.get('groupId'),
+      groupName: record.get('groupName')
+    }));
+  } catch (error) {
+    console.error('Error getting user groups:', error);
+    throw error;
+  } finally {
+    await session.close();
+  }
+};
+
+// Get all participants in a group with their status
+export const getGroupParticipants = async (groupId) => {
+  const session = driver.session();
+  try {
+    const result = await session.run(
+      `MATCH (u:User)-[r:PARTICIPATES_IN]->(g:Group {id: $groupId})
+       RETURN u.username as username,
+              r.joinedAt as joinedAt,
+              r.wonMonth as wonMonth,
+              r.wonAmount as wonAmount,
+              r.wonAt as wonAt`,
+      { groupId }
+    );
+    return result.records.map(record => ({
+      username: record.get('username'),
+      joinedAt: record.get('joinedAt'),
+      wonMonth: record.get('wonMonth'),
+      wonAmount: record.get('wonAmount'),
+      wonAt: record.get('wonAt')
+    }));
+  } catch (error) {
+    console.error('Error getting group participants:', error);
+    throw error;
+  } finally {
+    await session.close();
+  }
+};
+
+// Check if user is group owner
+export const isGroupOwner = async (groupId, username) => {
+  const session = driver.session();
+  try {
+    const result = await session.run(
+      `MATCH (u:User {username: $username})-[:OWNS]->(g:Group {id: $groupId})
+       RETURN count(*) > 0 as isOwner`,
+      { groupId, username }
+    );
+    return result.records[0].get('isOwner');
+  } catch (error) {
+    console.error('Error checking group ownership:', error);
+    throw error;
+  } finally {
+    await session.close();
+  }
+};
+
+// Check if user is group participant
+export const isGroupParticipant = async (groupId, username) => {
+  const session = driver.session();
+  try {
+    const result = await session.run(
+      `MATCH (u:User {username: $username})-[:PARTICIPATES_IN]->(g:Group {id: $groupId})
+       RETURN count(*) > 0 as isParticipant`,
+      { groupId, username }
+    );
+    return result.records[0].get('isParticipant');
+  } catch (error) {
+    console.error('Error checking group participation:', error);
+    throw error;
+  } finally {
+    await session.close();
+  }
+};
+
 // Create a connection request
 export const createConnectionRequest = async (fromUsername, toUsername) => {
   const session = driver.session();
@@ -130,6 +273,150 @@ export const removeConnection = async (fromUsername, toUsername) => {
     console.log(`Removed connection between ${fromUsername} and ${toUsername}`);
   } catch (error) {
     console.error('Error removing connection:', error);
+    throw error;
+  } finally {
+    await session.close();
+  }
+};
+
+// Record a winner for a specific month
+export const recordWinner = async (groupId, username, month, amount) => {
+  const session = driver.session();
+  try {
+    await session.run(
+      `MATCH (u:User {username: $username})-[r:PARTICIPATES_IN]->(g:Group {id: $groupId})
+       SET r.wonMonth = $month,
+           r.wonAmount = $amount,
+           r.wonAt = datetime()`,
+      { groupId, username, month, amount }
+    );
+    console.log(`Recorded winner ${username} for month ${month} in group ${groupId}`);
+  } catch (error) {
+    console.error('Error recording winner:', error);
+    throw error;
+  } finally {
+    await session.close();
+  }
+};
+
+// Get winners for a group
+export const getGroupWinners = async (groupId) => {
+  const session = driver.session();
+  try {
+    const result = await session.run(
+      `MATCH (u:User)-[r:PARTICIPATES_IN]->(g:Group {id: $groupId})
+       WHERE r.wonMonth IS NOT NULL
+       RETURN u.username as username, 
+              r.wonMonth as month, 
+              r.wonAmount as amount, 
+              r.wonAt as wonAt
+       ORDER BY r.wonMonth`,
+      { groupId }
+    );
+    return result.records.map(record => ({
+      username: record.get('username'),
+      month: record.get('month'),
+      amount: record.get('amount'),
+      wonAt: record.get('wonAt')
+    }));
+  } catch (error) {
+    console.error('Error getting group winners:', error);
+    throw error;
+  } finally {
+    await session.close();
+  }
+};
+
+// Create a group invitation
+export const createGroupInvite = async (groupId, fromUsername, toUsername) => {
+  const session = driver.session();
+  try {
+    await session.run(
+      `MATCH (u:User {username: $toUsername})
+       MATCH (g:Group {id: $groupId})
+       CREATE (u)-[:INVITED_TO {invitedAt: datetime(), invitedBy: $fromUsername}]->(g)`,
+      { groupId, fromUsername, toUsername }
+    );
+    console.log(`Created group invite for ${toUsername} to group ${groupId}`);
+  } catch (error) {
+    console.error('Error creating group invite:', error);
+    throw error;
+  } finally {
+    await session.close();
+  }
+};
+
+// Get pending group invites for a user
+export const getPendingGroupInvites = async (username) => {
+  const session = driver.session();
+  try {
+    const result = await session.run(
+      `MATCH (u:User {username: $username})-[invite:INVITED_TO]->(g:Group)
+       RETURN g.id as groupId, 
+              g.name as groupName, 
+              invite.invitedBy as invitedBy,
+              invite.invitedAt as invitedAt`,
+      { username }
+    );
+    return result.records.map(record => ({
+      groupId: record.get('groupId'),
+      groupName: record.get('groupName'),
+      invitedBy: record.get('invitedBy'),
+      invitedAt: record.get('invitedAt')
+    }));
+  } catch (error) {
+    console.error('Error getting pending group invites:', error);
+    throw error;
+  } finally {
+    await session.close();
+  }
+};
+
+// Accept group invite
+export const acceptGroupInvite = async (groupId, username) => {
+  const session = driver.session();
+  try {
+    // First check if the invitation exists
+    const checkResult = await session.run(
+      `MATCH (u:User {username: $username})-[invite:INVITED_TO]->(g:Group {id: $groupId})
+       RETURN count(invite) as inviteCount`,
+      { groupId, username }
+    );
+
+    const inviteCount = checkResult.records[0].get('inviteCount').toNumber();
+    if (inviteCount === 0) {
+      throw new Error('No invitation found for this group');
+    }
+
+    // If invitation exists, accept it
+    await session.run(
+      `MATCH (u:User {username: $username})-[invite:INVITED_TO]->(g:Group {id: $groupId})
+       DELETE invite
+       CREATE (u)-[:PARTICIPATES_IN {joinedAt: datetime()}]->(g)`,
+      { groupId, username }
+    );
+    console.log(`User ${username} accepted invite to group ${groupId}`);
+    return true;
+  } catch (error) {
+    console.error('Error accepting group invite:', error);
+    throw error;
+  } finally {
+    await session.close();
+  }
+};
+
+// Reject group invite
+export const rejectGroupInvite = async (groupId, username) => {
+  const session = driver.session();
+  try {
+    await session.run(
+      `MATCH (u:User {username: $username})-[invite:INVITED_TO]->(g:Group {id: $groupId})
+       DELETE invite`,
+      { groupId, username }
+    );
+    console.log(`User ${username} rejected invite to group ${groupId}`);
+  } catch (error) {
+    console.error('Error rejecting group invite:', error);
     throw error;
   } finally {
     await session.close();

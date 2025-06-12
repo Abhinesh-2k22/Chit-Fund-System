@@ -11,6 +11,32 @@ const typeDefs = gql`
     lastLogin: String
   }
 
+  type Group {
+    id: ID!
+    name: String!
+    owner: User!
+    totalPoolAmount: Float!
+    totalMonths: Int!
+    shuffleDate: String
+    status: String!
+    createdAt: String!
+  }
+
+  type GroupParticipant {
+    username: String!
+    joinedAt: String!
+    wonMonth: Int
+    wonAmount: Float
+    wonAt: String
+  }
+
+  type GroupWinner {
+    username: String!
+    month: Int!
+    amount: Float!
+    wonAt: String!
+  }
+
   type AuthPayload {
     token: String!
     user: User!
@@ -21,6 +47,12 @@ const typeDefs = gql`
     searchUser(emailOrMobile: String!): User
     pendingConnectionRequests: [User!]!
     connections: [User!]!
+    
+    # Group queries
+    myGroups: [Group!]!
+    groupDetails(groupId: ID!): Group
+    groupParticipants(groupId: ID!): [GroupParticipant!]!
+    groupWinners(groupId: ID!): [GroupWinner!]!
   }
 
   type Mutation {
@@ -34,7 +66,7 @@ const typeDefs = gql`
     ): AuthPayload!
 
     login(
-      emailOrMobile: String!
+      usernameOrEmailOrMobile: String!
       password: String!
     ): AuthPayload!
 
@@ -42,6 +74,37 @@ const typeDefs = gql`
     acceptConnectionRequest(fromUsername: String!): Boolean!
     rejectConnectionRequest(fromUsername: String!): Boolean!
     removeConnection(targetUsername: String!): Boolean!
+
+    # Group mutations
+    createGroup(
+      name: String!
+      totalPoolAmount: Float!
+      totalMonths: Int!
+    ): Group!
+
+    inviteToGroup(
+      groupId: ID!
+      username: String!
+    ): Boolean!
+
+    acceptGroupInvite(
+      groupId: ID!
+    ): Boolean!
+
+    rejectGroupInvite(
+      groupId: ID!
+    ): Boolean!
+
+    startGroup(
+      groupId: ID!
+    ): Boolean!
+
+    recordWinner(
+      groupId: ID!
+      username: String!
+      month: Int!
+      amount: Float!
+    ): Boolean!
   }
 `;
 
