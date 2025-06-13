@@ -25,6 +25,8 @@ import {
   acceptGroupInvite,
   rejectGroupInvite
 } from '../config/neo4j.js';
+import { initializeMySQL } from '../config/mysql.js';
+import pool from '../config/mysql.js';
 
 dotenv.config();
 
@@ -32,6 +34,8 @@ dotenv.config();
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => {
     console.log('Connected to MongoDB');
+    // Initialize MySQL and create tables
+    initializeMySQL();
   })
   .catch((err) => {
     console.error('MongoDB connection error:', err);
@@ -195,6 +199,10 @@ const resolvers = {
         // Create Neo4j node for the user
         await createUserNode(username);
         console.log('Neo4j node created for user');
+
+        // Add user to MySQL users table
+        await pool.query('INSERT INTO users (username, balance) VALUES (?, ?)', [username, 0]);
+        console.log('User added to MySQL users table');
 
         // Generate JWT token
         const token = jwt.sign(
