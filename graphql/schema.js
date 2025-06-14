@@ -9,6 +9,7 @@ const typeDefs = gql`
     age: Int
     gender: String
     lastLogin: String
+    balance: Float
   }
 
   type Group {
@@ -57,6 +58,7 @@ const typeDefs = gql`
     pendingConnectionRequests: [User!]!
     connections: [User!]!
     pendingGroupInvites: [GroupInvite!]!
+    userBalance: Float!
     
     # Group queries
     myGroups(username: String!): [Group!]!

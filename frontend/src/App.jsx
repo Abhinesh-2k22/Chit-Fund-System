@@ -6,6 +6,7 @@ import ProfilePage from './components/ProfilePage';
 import HomePage from './components/HomePage';
 import Friends from './components/Friends';
 import Alerts from './components/Alerts';
+import Funds from './components/Funds';
 import ProtectedRoute from './components/ProtectedRoute';
 import { ApolloClient, InMemoryCache, ApolloProvider, createHttpLink } from '@apollo/client';
 import { setContext } from '@apollo/client/link/context';
@@ -85,6 +86,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <Alerts />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/funds"
+              element={
+                <ProtectedRoute>
+                  <Funds />
                 </ProtectedRoute>
               }
             />

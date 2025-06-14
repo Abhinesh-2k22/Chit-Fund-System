@@ -50,6 +50,10 @@ const resolvers = {
       const freshUser = await User.findById(user.id).select('-password');
       if (!freshUser) throw new Error('User not found');
       
+      // Get balance from MySQL
+      const [rows] = await pool.query('SELECT balance FROM users WHERE username = ?', [freshUser.username]);
+      const balance = rows[0]?.balance || 0;
+      
       return {
         id: freshUser._id,
         username: freshUser.username,
@@ -57,8 +61,21 @@ const resolvers = {
         mobile: freshUser.mobile,
         age: freshUser.age,
         gender: freshUser.gender,
-        lastLogin: freshUser.lastLogin ? freshUser.lastLogin.toISOString() : null
+        lastLogin: freshUser.lastLogin ? freshUser.lastLogin.toISOString() : null,
+        balance: balance
       };
+    },
+
+    userBalance: async (_, __, { user }) => {
+      if (!user) throw new Error('Not authenticated');
+      
+      try {
+        const [rows] = await pool.query('SELECT balance FROM users WHERE username = ?', [user.username]);
+        return rows[0]?.balance || 0;
+      } catch (error) {
+        console.error('Error fetching user balance:', error);
+        throw new Error('Failed to fetch user balance');
+      }
     },
 
     searchUser: async (_, { emailOrMobile }, { user }) => {
