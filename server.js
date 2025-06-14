@@ -18,7 +18,7 @@ console.log('Cookie parser middleware added');
 
 // CORS configuration
 app.use(cors({
-  origin: ['http://localhost:3000', 'https://studio.apollographql.com'],
+  origin: ['http://localhost:3000', 'https://studio.apollographql.com', 'http://localhost:5173'],
   credentials: true,
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
@@ -69,7 +69,7 @@ const server = new ApolloServer({
   context,
   csrfPrevention: false,
   cors: {
-    origin: ['http://localhost:3000', 'https://studio.apollographql.com'],
+    origin: ['http://localhost:3000', 'https://studio.apollographql.com', 'http://localhost:5173'],
     credentials: true,
     methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],

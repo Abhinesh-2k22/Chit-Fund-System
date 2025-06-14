@@ -88,15 +88,38 @@ export const removeGroupParticipant = async (groupId, username) => {
 export const getUserGroups = async (username) => {
   const session = driver.session();
   try {
+    console.log('Fetching groups for user:', username);
     const result = await session.run(
-      `MATCH (u:User {username: $username})-[:PARTICIPATES_IN]->(g:Group)
-       RETURN g.id as groupId, g.name as groupName`,
+      `MATCH (u:User {username: $username})
+       MATCH (u)-[r:PARTICIPATES_IN]->(g:Group)
+       RETURN g.id as groupId,
+              g.name as groupName,
+              r.joinedAt as joinedAt,
+              r.wonMonth as wonMonth,
+              r.wonAmount as wonAmount,
+              r.wonAt as wonAt,
+              r.nextPayment as nextPayment,
+              r.totalPaid as totalPaid,
+              r.remainingPayments as remainingPayments,
+              r.role as role`,
       { username }
     );
-    return result.records.map(record => ({
+    
+    const groups = result.records.map(record => ({
       groupId: record.get('groupId'),
-      groupName: record.get('groupName')
+      groupName: record.get('groupName'),
+      joinedAt: record.get('joinedAt'),
+      wonMonth: record.get('wonMonth'),
+      wonAmount: record.get('wonAmount'),
+      wonAt: record.get('wonAt'),
+      nextPayment: record.get('nextPayment'),
+      totalPaid: record.get('totalPaid'),
+      remainingPayments: record.get('remainingPayments'),
+      role: record.get('role')
     }));
+
+    console.log('Found groups in Neo4j:', groups);
+    return groups;
   } catch (error) {
     console.error('Error getting user groups:', error);
     throw error;

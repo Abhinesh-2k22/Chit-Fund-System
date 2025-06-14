@@ -45,24 +45,43 @@ const resolvers = {
   Query: {
     me: async (_, __, { user }) => {
       if (!user) throw new Error('Not authenticated');
-      return user;
+      
+      // Fetch fresh user data from MongoDB
+      const freshUser = await User.findById(user.id).select('-password');
+      if (!freshUser) throw new Error('User not found');
+      
+      return {
+        id: freshUser._id,
+        username: freshUser.username,
+        email: freshUser.email,
+        mobile: freshUser.mobile,
+        age: freshUser.age,
+        gender: freshUser.gender,
+        lastLogin: freshUser.lastLogin ? freshUser.lastLogin.toISOString() : null
+      };
     },
 
     searchUser: async (_, { emailOrMobile }, { user }) => {
       if (!user) throw new Error('Not authenticated');
       
-      const foundUser = await User.findOne({
+      // Create a regex pattern for partial matching
+      const searchPattern = new RegExp(emailOrMobile, 'i');
+      
+      const foundUsers = await User.find({
         $or: [
-          { email: emailOrMobile },
-          { mobile: emailOrMobile }
-        ]
+          { email: searchPattern },
+          { mobile: searchPattern },
+          { username: searchPattern }
+        ],
+        // Exclude the current user from results
+        _id: { $ne: user.id }
       }).select('username email mobile');
 
-      if (!foundUser) {
-        throw new Error('User not found');
+      if (!foundUsers || foundUsers.length === 0) {
+        throw new Error('No users found');
       }
 
-      return foundUser;
+      return foundUsers;
     },
 
     pendingConnectionRequests: async (_, __, { user }) => {
@@ -87,12 +106,208 @@ const resolvers = {
       return connectedUsers;
     },
 
-    // Group queries
-    myGroups: async (_, __, { user }) => {
+    pendingGroupInvites: async (_, __, { user }) => {
       if (!user) throw new Error('Not authenticated');
       
-      const groups = await getUserGroups(user.username);
-      return Group.find({ _id: { $in: groups.map(g => g.groupId) } });
+      try {
+        console.log('Fetching pending group invites for user:', user.username);
+        
+        // Get pending invites from Neo4j
+        const pendingInvites = await getPendingGroupInvites(user.username);
+        console.log('Neo4j pending invites:', pendingInvites);
+        
+        if (!pendingInvites || pendingInvites.length === 0) {
+          console.log('No pending invites found');
+          return [];
+        }
+
+        // Get group details from MongoDB
+        const groupIds = pendingInvites.map(invite => invite.groupId);
+        console.log('Fetching MongoDB groups with IDs:', groupIds);
+
+        const groups = await Group.find({ 
+          _id: { $in: groupIds } 
+        });
+
+        console.log('MongoDB groups:', groups);
+
+        if (!groups || groups.length === 0) {
+          console.log('No groups found in MongoDB');
+          return [];
+        }
+
+        // Create a map of group details for quick lookup
+        const groupMap = new Map(
+          groups.map(g => [g._id.toString(), g])
+        );
+
+        // Combine Neo4j and MongoDB data
+        const enrichedInvites = pendingInvites.map(invite => {
+          const group = groupMap.get(invite.groupId);
+          if (!group) {
+            console.error('Group not found for invite:', invite);
+            return null;
+          }
+
+          // Convert Neo4j DateTime to ISO string
+          let invitedAt = null;
+          if (invite.invitedAt) {
+            try {
+              // Handle Neo4j DateTime object with BigInt values
+              if (typeof invite.invitedAt === 'object' && invite.invitedAt.year) {
+                const date = new Date(
+                  Number(invite.invitedAt.year),
+                  Number(invite.invitedAt.month) - 1, // JavaScript months are 0-based
+                  Number(invite.invitedAt.day),
+                  Number(invite.invitedAt.hour),
+                  Number(invite.invitedAt.minute),
+                  Number(invite.invitedAt.second)
+                );
+                invitedAt = date.toISOString();
+              } else {
+                // If it's already a string or other format, use as is
+                invitedAt = invite.invitedAt;
+              }
+            } catch (error) {
+              console.error('Error converting date:', error);
+              invitedAt = null;
+            }
+          }
+
+          return {
+            groupId: invite.groupId,
+            groupName: group.name,
+            invitedBy: invite.invitedBy,
+            invitedAt: invitedAt
+          };
+        }).filter(invite => invite !== null);
+
+        console.log('Final enriched invites:', enrichedInvites);
+        return enrichedInvites;
+      } catch (error) {
+        console.error('Error fetching pending group invites:', error);
+        throw new Error(error.message || 'Failed to fetch pending group invites');
+      }
+    },
+
+    myGroups: async (_, { username }, { user }) => {
+      if (!user) throw new Error('Not authenticated');
+      
+      try {
+        // Verify if the requesting user is authorized
+        if (user.username !== username) {
+          throw new Error('Not authorized to view these groups');
+        }
+
+        console.log('Fetching groups for user:', username);
+
+        // Get all groups where user is a participant from Neo4j
+        const userGroups = await getUserGroups(username);
+        console.log('Neo4j user groups:', userGroups);
+        
+        if (!userGroups || userGroups.length === 0) {
+          console.log('No groups found in Neo4j');
+          return [];
+        }
+
+        // Get detailed group information from MongoDB
+        const groupIds = userGroups.map(g => g.groupId);
+        console.log('Fetching MongoDB groups with IDs:', groupIds);
+
+        const groups = await Group.find({ 
+          _id: { $in: groupIds } 
+        });
+
+        console.log('MongoDB groups:', groups);
+
+        if (!groups || groups.length === 0) {
+          console.log('No groups found in MongoDB');
+          return [];
+        }
+
+        // Get owner details for all groups
+        const ownerUsernames = [...new Set(groups.map(g => g.owner))];
+        const owners = await User.find({ username: { $in: ownerUsernames } }).select('username email mobile');
+        const ownerMap = new Map(owners.map(o => [o.username, o]));
+
+        // Create a map of Neo4j group data for quick lookup
+        const neo4jGroupMap = new Map(
+          userGroups.map(g => [g.groupId, g])
+        );
+
+        // Combine Neo4j and MongoDB data
+        const enrichedGroups = groups.map(group => {
+          try {
+            if (!group || !group._id) {
+              console.error('Invalid group data:', group);
+              return null;
+            }
+
+            const groupId = group._id.toString();
+            const neo4jData = neo4jGroupMap.get(groupId);
+            
+            if (!neo4jData) {
+              console.error('No Neo4j data found for group:', groupId);
+              return null;
+            }
+
+            const owner = ownerMap.get(group.owner);
+            if (!owner) {
+              console.error('Owner not found for group:', groupId);
+              return null;
+            }
+
+            // Determine role based on ownership
+            const isOwner = group.owner === username;
+            const role = isOwner ? 'owner' : (neo4jData.role || 'participant');
+
+            console.log(`Processing group ${group.name}:`, {
+              groupId,
+              isOwner,
+              role,
+              neo4jData,
+              owner: owner.username
+            });
+
+            // Create the enriched group object
+            const enrichedGroup = {
+              id: groupId,
+              name: group.name || neo4jData.groupName || '',
+              totalPoolAmount: group.totalPoolAmount || 0,
+              totalMonths: group.totalMonths || 0,
+              status: group.status || 'pending',
+              shuffleDate: group.shuffleDate ? group.shuffleDate.toISOString() : null,
+              createdAt: group.createdAt ? group.createdAt.toISOString() : new Date().toISOString(),
+              owner: {
+                id: owner._id.toString(),
+                username: owner.username,
+                email: owner.email,
+                mobile: owner.mobile
+              },
+              role: role,
+              joinedAt: neo4jData.joinedAt ? new Date(neo4jData.joinedAt).toISOString() : new Date().toISOString(),
+              wonMonth: neo4jData.wonMonth || null,
+              wonAmount: neo4jData.wonAmount || null,
+              wonAt: neo4jData.wonAt ? new Date(neo4jData.wonAt).toISOString() : null,
+              nextPayment: neo4jData.nextPayment || 0,
+              totalPaid: neo4jData.totalPaid || 0,
+              remainingPayments: neo4jData.remainingPayments || group.totalMonths || 0
+            };
+
+            console.log('Enriched group:', enrichedGroup);
+            return enrichedGroup;
+          } catch (error) {
+            console.error('Error processing group:', error);
+            return null;
+          }
+        }).filter(group => group !== null);
+
+        console.log('Final enriched groups:', enrichedGroups);
+        return enrichedGroups;
+      } catch (error) {
+        console.error('Error fetching user groups:', error);
+        throw new Error(error.message || 'Failed to fetch user groups');
+      }
     },
 
     groupDetails: async (_, { groupId }, { user }) => {
@@ -491,6 +706,37 @@ const resolvers = {
 
         return true;
       } catch (error) {
+        throw new Error(error.message);
+      }
+    },
+
+    leaveGroup: async (_, { groupId }, { user }) => {
+      if (!user) throw new Error('Not authenticated');
+
+      try {
+        // Check if group exists
+        const group = await Group.findById(groupId);
+        if (!group) throw new Error('Group not found');
+
+        // Check if user is a participant
+        const isParticipant = await isGroupParticipant(groupId, user.username);
+        if (!isParticipant) throw new Error('You are not a participant in this group');
+
+        // Check if user is the owner
+        const isOwner = await isGroupOwner(groupId, user.username);
+        if (isOwner) throw new Error('Group owner cannot leave the group');
+
+        // Check if group has started
+        if (group.status === 'started') {
+          throw new Error('Cannot leave a group that has already started');
+        }
+
+        // Remove participant from Neo4j
+        await removeGroupParticipant(groupId, user.username);
+
+        return true;
+      } catch (error) {
+        console.error('Error leaving group:', error);
         throw new Error(error.message);
       }
     }

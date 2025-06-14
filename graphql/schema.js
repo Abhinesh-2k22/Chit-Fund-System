@@ -20,6 +20,15 @@ const typeDefs = gql`
     shuffleDate: String
     status: String!
     createdAt: String!
+    # User-specific group information
+    role: String!
+    joinedAt: String!
+    wonMonth: Int
+    wonAmount: Float
+    wonAt: String
+    nextPayment: Float!
+    totalPaid: Float!
+    remainingPayments: Int!
   }
 
   type GroupParticipant {
@@ -44,12 +53,13 @@ const typeDefs = gql`
 
   type Query {
     me: User
-    searchUser(emailOrMobile: String!): User
+    searchUser(emailOrMobile: String!): [User!]!
     pendingConnectionRequests: [User!]!
     connections: [User!]!
+    pendingGroupInvites: [GroupInvite!]!
     
     # Group queries
-    myGroups: [Group!]!
+    myGroups(username: String!): [Group!]!
     groupDetails(groupId: ID!): Group
     groupParticipants(groupId: ID!): [GroupParticipant!]!
     groupWinners(groupId: ID!): [GroupWinner!]!
@@ -105,6 +115,17 @@ const typeDefs = gql`
       month: Int!
       amount: Float!
     ): Boolean!
+
+    leaveGroup(
+      groupId: ID!
+    ): Boolean!
+  }
+
+  type GroupInvite {
+    groupId: ID!
+    groupName: String!
+    invitedBy: String!
+    invitedAt: String!
   }
 `;
 
