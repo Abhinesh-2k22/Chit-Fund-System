@@ -361,7 +361,32 @@ const resolvers = {
       if (!isParticipant) throw new Error('Not authorized to view this group');
       
       return getGroupWinners(groupId);
-    }
+    },
+
+    getTransactions: async (_, __, { user }) => {
+      if (!user) throw new Error('Not authenticated');
+      
+      try {
+        const [transactions] = await pool.query(
+          `SELECT * FROM transfer 
+           WHERE from_field = ? OR to_field = ?
+           ORDER BY time_stamp DESC`,
+          [user.username, user.username]
+        );
+
+        return transactions.map(transaction => ({
+          id: transaction.id,
+          fromField: transaction.from_field,
+          toField: transaction.to_field,
+          amount: transaction.amount,
+          description: transaction.description,
+          timeStamp: transaction.time_stamp.toISOString()
+        }));
+      } catch (error) {
+        console.error('Error fetching transactions:', error);
+        throw new Error('Failed to fetch transactions');
+      }
+    },
   },
 
   Mutation: {
@@ -757,7 +782,58 @@ const resolvers = {
         console.error('Error leaving group:', error);
         throw new Error(error.message);
       }
-    }
+    },
+
+    addFund: async (_, { amount }, { user }) => {
+      if (!user) throw new Error('Not authenticated');
+      
+      try {
+        // Start a transaction
+        const connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        try {
+          // Update user's balance
+          const [updateResult] = await connection.query(
+            'UPDATE users SET balance = balance + ? WHERE username = ?',
+            [amount, user.username]
+          );
+
+          if (updateResult.affectedRows === 0) {
+            throw new Error('User not found');
+          }
+
+          // Add transfer record
+          const [transferResult] = await connection.query(
+            'INSERT INTO transfer (from_field, to_field, amount, description, time_stamp) VALUES (?, ?, ?, ?, NOW())',
+            ['bank', user.username, amount, `${amount} added`]
+          );
+
+          // Commit the transaction
+          await connection.commit();
+          
+          // Get updated balance
+          const [balanceResult] = await connection.query(
+            'SELECT balance FROM users WHERE username = ?',
+            [user.username]
+          );
+
+          return {
+            success: true,
+            newBalance: balanceResult[0].balance
+          };
+        } catch (error) {
+          // Rollback in case of error
+          await connection.rollback();
+          throw error;
+        } finally {
+          connection.release();
+        }
+      } catch (error) {
+        console.error('Error adding funds:', error);
+        throw new Error(error.message || 'Failed to add funds');
+      }
+    },
   }
 };
 

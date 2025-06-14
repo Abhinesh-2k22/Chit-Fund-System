@@ -59,6 +59,7 @@ const typeDefs = gql`
     connections: [User!]!
     pendingGroupInvites: [GroupInvite!]!
     userBalance: Float!
+    getTransactions: [Transaction!]!
     
     # Group queries
     myGroups(username: String!): [Group!]!
@@ -121,6 +122,9 @@ const typeDefs = gql`
     leaveGroup(
       groupId: ID!
     ): Boolean!
+
+    # Fund mutations
+    addFund(amount: Int!): AddFundResponse!
   }
 
   type GroupInvite {
@@ -128,6 +132,20 @@ const typeDefs = gql`
     groupName: String!
     invitedBy: String!
     invitedAt: String!
+  }
+
+  type AddFundResponse {
+    success: Boolean!
+    newBalance: Float!
+  }
+
+  type Transaction {
+    id: ID!
+    fromField: String!
+    toField: String!
+    amount: Float!
+    description: String!
+    timeStamp: String!
   }
 `;
 
