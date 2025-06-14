@@ -264,6 +264,27 @@ export const getPendingRequests = async (username) => {
   }
 };
 
+// Delete a connection request
+export const deleteConnectionRequest = async (fromUsername, toUsername) => {
+  const session = driver.session();
+  try {
+    const result = await session.run(
+      `MATCH (u:User {username: $fromUsername})-[r:REQUESTED]->(t:User {username: $toUsername})
+       DELETE r`,
+      { fromUsername, toUsername }
+    );
+    if (result.summary.counters.relationshipsDeleted === 0) {
+      throw new Error('No invitation found for this user');
+    }
+    console.log(`Deleted connection request from ${fromUsername} to ${toUsername}`);
+  } catch (error) {
+    console.error('Error deleting connection request:', error);
+    throw error;
+  } finally {
+    await session.close();
+  }
+};
+
 // Get user connections
 export const getUserConnections = async (username) => {
   const session = driver.session();

@@ -23,7 +23,8 @@ import {
   createGroupInvite,
   getPendingGroupInvites,
   acceptGroupInvite,
-  rejectGroupInvite
+  rejectGroupInvite,
+  deleteConnectionRequest
 } from '../config/neo4j.js';
 import { initializeMySQL } from '../config/mysql.js';
 import pool from '../config/mysql.js';

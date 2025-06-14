@@ -70,7 +70,13 @@ const Alerts = () => {
   });
 
   const [rejectConnectionRequest] = useMutation(REJECT_CONNECTION_REQUEST, {
-    onCompleted: () => refetchConnectionRequests()
+    onCompleted: () => {
+      refetchConnectionRequests();
+    },
+    onError: (error) => {
+      console.error('Error rejecting connection request:', error);
+      alert(error.message || 'Failed to reject connection request');
+    }
   });
 
   // Group invite mutations
@@ -102,9 +108,16 @@ const Alerts = () => {
 
   const handleRejectConnection = async (username) => {
     try {
-      await rejectConnectionRequest({ variables: { fromUsername: username } });
+      await rejectConnectionRequest({ 
+        variables: { fromUsername: username },
+        onError: (error) => {
+          console.error('Error rejecting connection request:', error);
+          alert(error.message || 'Failed to reject connection request');
+        }
+      });
     } catch (error) {
       console.error('Error rejecting connection request:', error);
+      alert(error.message || 'Failed to reject connection request');
     }
   };
 
