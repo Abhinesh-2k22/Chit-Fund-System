@@ -5,6 +5,7 @@ import { FaUsers, FaMoneyBillWave, FaGavel, FaChevronLeft, FaEdit, FaPlus, FaSea
 import Navbar from './Navbar';
 import { useAuth } from '../context/AuthContext';
 import debounce from 'lodash/debounce';
+import Bidding from './Bidding';
 
 const GET_GROUP_DETAILS = gql`
   query GroupDetails($groupId: ID!) {
@@ -14,6 +15,7 @@ const GET_GROUP_DETAILS = gql`
       totalPoolAmount
       totalMonths
       status
+      shuffleDate
       createdAt
       owner {
         id
@@ -596,10 +598,10 @@ const GroupDetails = () => {
                 )}
 
                 {activeTab === 'bid' && (
-                  <div>
-                    <h2 className="text-xl font-semibold text-gray-800 mb-4">Bidding</h2>
-                    {/* Add your bidding content here */}
-                  </div>
+                  <Bidding 
+                    shuffleDate={data?.groupDetails?.shuffleDate} 
+                    status={data?.groupDetails?.status} 
+                  />
                 )}
               </div>
             </div>

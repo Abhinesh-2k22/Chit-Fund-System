@@ -31,9 +31,16 @@ const groupSchema = new mongoose.Schema({
   shuffleDate: {
     type: Date
   },
+  startDate: {
+    type: Date
+  },
   createdAt: {
     type: Date,
     default: Date.now
+  },
+  currentmonth:{
+    type:Number,
+    default: 0
   }
 });
 

@@ -21,6 +21,7 @@ const typeDefs = gql`
     shuffleDate: String
     status: String!
     createdAt: String!
+    currentMonth: Int
     # User-specific group information
     role: String!
     joinedAt: String!

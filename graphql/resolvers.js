@@ -298,6 +298,7 @@ const resolvers = {
               status: group.status || 'pending',
               shuffleDate: group.shuffleDate ? group.shuffleDate.toISOString() : null,
               createdAt: group.createdAt ? group.createdAt.toISOString() : new Date().toISOString(),
+              currentMonth: group.currentMonth || 0,
               owner: {
                 id: owner._id.toString(),
                 username: owner.username,
@@ -351,6 +352,7 @@ const resolvers = {
         status: group.status,
         shuffleDate: group.shuffleDate ? group.shuffleDate.toISOString() : null,
         createdAt: group.createdAt.toISOString(),
+        currentMonth: group.currentMonth,
         owner: {
           id: owner._id.toString(),
           username: owner.username,

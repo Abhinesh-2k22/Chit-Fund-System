@@ -15,6 +15,7 @@ const GET_MY_GROUPS = gql`
       status
       shuffleDate
       createdAt
+      currentMonth
       owner {
         id
         username
@@ -81,10 +82,10 @@ const HomePage = () => {
   if (error) {
     console.error('Error loading groups:', error);
     return (
-      <div className="min-h-screen bg-gray-100">
-        <Navbar />
-        <div className="pt-20 px-4">
-          <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gray-100">
+      <Navbar />
+      <div className="pt-20 px-4">
+        <div className="max-w-7xl mx-auto">
             <div className="text-center py-8">
               <p className="text-red-600">Error loading groups. Please try refreshing the page.</p>
               <button 
@@ -93,11 +94,11 @@ const HomePage = () => {
               >
                 Retry
               </button>
-            </div>
           </div>
         </div>
       </div>
-    );
+    </div>
+  );
   }
 
   const groups = data?.myGroups || [];
@@ -140,8 +141,8 @@ const HomePage = () => {
           {/* Header with Create Button */}
           <div className="mb-8 flex justify-between items-center">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">My Chit Funds</h1>
-              <p className="mt-2 text-gray-600">View and manage your chit fund groups</p>
+            <h1 className="text-3xl font-bold text-gray-900">My Chit Funds</h1>
+            <p className="mt-2 text-gray-600">View and manage your chit fund groups</p>
             </div>
             <button
               onClick={() => navigate('/create-group')}
@@ -207,12 +208,12 @@ const HomePage = () => {
                   <div className="mt-4">
                     <div className="flex justify-between text-sm text-gray-600 mb-1">
                       <span>Progress</span>
-                      <span>{group.totalMonths - group.remainingPayments}/{group.totalMonths} months</span>
+                      <span>{group.currentMonth}/{group.totalMonths} months</span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2">
                       <div 
                         className="bg-indigo-600 h-2 rounded-full" 
-                        style={{ width: `${((group.totalMonths - group.remainingPayments) / group.totalMonths) * 100}%` }}
+                        style={{ width: `${(group.currentMonth / group.totalMonths) * 100}%` }}
                       ></div>
                     </div>
                   </div>
