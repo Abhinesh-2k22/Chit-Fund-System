@@ -184,12 +184,12 @@ const Funds = () => {
                     return (
                       <div key={transaction.id} className="bg-gray-50 rounded-lg p-4">
                         <div className="flex justify-between items-start">
-                          <div>
+              <div>
                             <p className="text-sm font-semibold text-gray-600">{transaction.description}</p>
                             <p className="text-xs text-gray-500 mt-1">
                               {formatDate(transaction.timeStamp)}
-                            </p>
-                          </div>
+                </p>
+              </div>
                           <div className={`text-right ${isOutgoing ? 'text-red-600' : 'text-green-600'}`}>
                             <p className="font-semibold">
                               {isOutgoing ? '-' : '+'}₹{Math.abs(amount)}
@@ -197,15 +197,15 @@ const Funds = () => {
                             <p className="text-xs text-gray-500 mt-1">
                               {isOutgoing ? `To: ${transaction.toField}` : `From: ${transaction.fromField}`}
                             </p>
-                          </div>
-                        </div>
-                      </div>
+              </div>
+            </div>
+          </div>
                     );
                   })}
-                </div>
+          </div>
               ) : (
-                <div className="text-center py-8 text-gray-500">
-                  No transactions yet
+            <div className="text-center py-8 text-gray-500">
+              No transactions yet
                 </div>
               )}
             </div>

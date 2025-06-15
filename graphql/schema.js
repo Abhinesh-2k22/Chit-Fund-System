@@ -66,6 +66,8 @@ const typeDefs = gql`
     groupDetails(groupId: ID!): Group
     groupParticipants(groupId: ID!): [GroupParticipant!]!
     groupWinners(groupId: ID!): [GroupWinner!]!
+    getGroupOutgoingInvites(groupId: ID!): [String!]!
+    groupPendingInvites(groupId: ID!): [String!]!
   }
 
   type Mutation {
@@ -92,13 +94,20 @@ const typeDefs = gql`
     createGroup(
       name: String!
       totalPoolAmount: Float!
-      totalMonths: Int!
+      totalMonths: Int! # Maximum 12 months
     ): Group!
 
     inviteToGroup(
       groupId: ID!
       username: String!
     ): Boolean!
+
+    updateGroupDetails(
+      groupId: ID!
+      name: String
+      totalPoolAmount: Float
+      totalMonths: Int
+    ): Group!
 
     acceptGroupInvite(
       groupId: ID!

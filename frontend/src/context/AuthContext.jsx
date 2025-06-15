@@ -1,10 +1,9 @@
 import { createContext, useContext, useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { gql, useMutation, useApolloClient } from '@apollo/client';
 import Cookies from 'js-cookie';
 
-const AuthContext = createContext();
-
-export const useAuth = () => useContext(AuthContext);
+const AuthContext = createContext(null);
 
 const LOGIN_MUTATION = gql`
   mutation Login($usernameOrEmailOrMobile: String!, $password: String!) {
@@ -17,7 +16,6 @@ const LOGIN_MUTATION = gql`
         mobile
         age
         gender
-        lastLogin
       }
     }
   }
@@ -34,7 +32,6 @@ const REGISTER_MUTATION = gql`
         mobile
         age
         gender
-        lastLogin
       }
     }
   }
@@ -49,7 +46,6 @@ const ME_QUERY = gql`
       mobile
       age
       gender
-      lastLogin
     }
   }
 `;
@@ -58,6 +54,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const apolloClient = useApolloClient();
+  const navigate = useNavigate();
 
   const [loginMutation] = useMutation(LOGIN_MUTATION);
   const [registerMutation] = useMutation(REGISTER_MUTATION);
@@ -66,7 +63,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const { data } = await apolloClient.query({
         query: ME_QUERY,
-        fetchPolicy: 'cache-first'
+        fetchPolicy: 'network-only'
       });
       
       if (data?.me) {
@@ -75,7 +72,6 @@ export const AuthProvider = ({ children }) => {
       }
       return false;
     } catch (error) {
-      // Silently handle authentication errors
       if (error.message.includes('Not authenticated')) {
         Cookies.remove('authToken');
         setUser(null);
@@ -96,7 +92,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     initializeAuth();
-  }, [apolloClient]);
+  }, []);
 
   const login = async (usernameOrEmailOrMobile, password) => {
     try {
@@ -117,10 +113,13 @@ export const AuthProvider = ({ children }) => {
       Cookies.set('authToken', token, { expires: 1 }); // 1 day expiry
       
       // Update Apollo Client cache
-      apolloClient.resetStore();
+      await apolloClient.resetStore();
       
-      // Fetch fresh user data
-      await fetchUserData();
+      // Set user state
+      setUser(user);
+      
+      // Navigate to home
+      navigate('/home');
       
       return user;
     } catch (error) {
@@ -152,10 +151,13 @@ export const AuthProvider = ({ children }) => {
       Cookies.set('authToken', token, { expires: 1 }); // 1 day expiry
       
       // Update Apollo Client cache
-      apolloClient.resetStore();
+      await apolloClient.resetStore();
       
-      // Fetch fresh user data
-      await fetchUserData();
+      // Set user state
+      setUser(user);
+      
+      // Navigate to home
+      navigate('/home');
       
       return user;
     } catch (error) {
@@ -164,18 +166,33 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
     Cookies.remove('authToken');
     setUser(null);
+    await apolloClient.resetStore();
+    navigate('/login');
   };
 
-  const refreshUser = async () => {
-    return fetchUserData();
+  const value = {
+    user,
+    loading,
+    login,
+    register,
+    logout,
+    refreshUser: fetchUserData
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
+};
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
 }; 

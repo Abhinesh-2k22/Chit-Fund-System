@@ -7,6 +7,8 @@ import HomePage from './components/HomePage';
 import Friends from './components/Friends';
 import Alerts from './components/Alerts';
 import Funds from './components/Funds';
+import CreateGroup from './components/CreateGroup';
+import GroupDetails from './components/GroupDetails';
 import ProtectedRoute from './components/ProtectedRoute';
 import { ApolloClient, InMemoryCache, ApolloProvider, createHttpLink } from '@apollo/client';
 import { setContext } from '@apollo/client/link/context';
@@ -47,6 +49,7 @@ const client = new ApolloClient({
       errorPolicy: 'all',
     },
   },
+  connectToDevTools: true,
 });
 
 function App() {
@@ -94,6 +97,22 @@ function App() {
               element={
                 <ProtectedRoute>
                   <Funds />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/create-group"
+              element={
+                <ProtectedRoute>
+                  <CreateGroup />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/group/:groupId/:groupName"
+              element={
+                <ProtectedRoute>
+                  <GroupDetails />
                 </ProtectedRoute>
               }
             />

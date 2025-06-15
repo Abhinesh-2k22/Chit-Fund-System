@@ -1,7 +1,9 @@
 import { useQuery, gql } from '@apollo/client';
 import Navbar from './Navbar';
-import { FaUsers, FaRupeeSign, FaCalendarAlt, FaUser, FaTrophy, FaMoneyBillWave } from 'react-icons/fa';
+import { FaUsers, FaRupeeSign, FaCalendarAlt, FaUser, FaTrophy, FaMoneyBillWave, FaPlus } from 'react-icons/fa';
 import { useAuth } from '../context/AuthContext';
+import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const GET_MY_GROUPS = gql`
   query GetMyGroups($username: String!) {
@@ -33,10 +35,34 @@ const GET_MY_GROUPS = gql`
 
 const HomePage = () => {
   const { user } = useAuth();
-  const { loading, error, data } = useQuery(GET_MY_GROUPS, {
+  const navigate = useNavigate();
+  const { loading, error, data, refetch } = useQuery(GET_MY_GROUPS, {
     variables: { username: user?.username },
-    skip: !user?.username
+    skip: !user?.username,
+    fetchPolicy: 'network-only',
   });
+
+  // Refetch groups when user changes
+  useEffect(() => {
+    if (user?.username) {
+      refetch();
+    }
+  }, [user?.username, refetch]);
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-100">
+        <Navbar />
+        <div className="pt-20 px-4">
+          <div className="max-w-7xl mx-auto">
+            <div className="text-center py-8">
+              <p className="text-gray-600">Please log in to view your groups</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) return (
     <div className="min-h-screen bg-gray-100">
@@ -52,18 +78,27 @@ const HomePage = () => {
     </div>
   );
 
-  if (error) return (
-    <div className="min-h-screen bg-gray-100">
-      <Navbar />
-      <div className="pt-20 px-4">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center py-8 text-red-600">
-            <p>Error loading groups: {error.message}</p>
+  if (error) {
+    console.error('Error loading groups:', error);
+    return (
+      <div className="min-h-screen bg-gray-100">
+        <Navbar />
+        <div className="pt-20 px-4">
+          <div className="max-w-7xl mx-auto">
+            <div className="text-center py-8">
+              <p className="text-red-600">Error loading groups. Please try refreshing the page.</p>
+              <button 
+                onClick={() => refetch()} 
+                className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+              >
+                Retry
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  }
 
   const groups = data?.myGroups || [];
 
@@ -102,10 +137,19 @@ const HomePage = () => {
       
       <main className="pt-20 pb-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Header */}
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">My Chit Funds</h1>
-            <p className="mt-2 text-gray-600">View and manage your chit fund groups</p>
+          {/* Header with Create Button */}
+          <div className="mb-8 flex justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">My Chit Funds</h1>
+              <p className="mt-2 text-gray-600">View and manage your chit fund groups</p>
+            </div>
+            <button
+              onClick={() => navigate('/create-group')}
+              className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+              <FaPlus className="mr-2" />
+              Create New Group
+            </button>
           </div>
 
           {/* Groups Grid */}
@@ -184,7 +228,10 @@ const HomePage = () => {
 
                 {/* Action Buttons */}
                 <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
-                  <button className="w-full bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors">
+                  <button 
+                    onClick={() => navigate(`/group/${group.id}/${encodeURIComponent(group.name)}`)}
+                    className="w-full bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors"
+                  >
                     View Details
                   </button>
                 </div>
@@ -198,11 +245,6 @@ const HomePage = () => {
               <FaUsers className="mx-auto h-12 w-12 text-gray-400" />
               <h3 className="mt-2 text-sm font-medium text-gray-900">No groups found</h3>
               <p className="mt-1 text-sm text-gray-500">Get started by creating a new chit fund group.</p>
-              <div className="mt-6">
-                <button className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                  Create New Group
-                </button>
-              </div>
             </div>
           )}
         </div>

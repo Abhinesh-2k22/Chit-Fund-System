@@ -24,7 +24,9 @@ import {
   getPendingGroupInvites,
   acceptGroupInvite,
   rejectGroupInvite,
-  deleteConnectionRequest
+  deleteConnectionRequest,
+  getGroupOutgoingInvitesNeo4j,
+  getGroupPendingInvitesNeo4j
 } from '../config/neo4j.js';
 import { initializeMySQL } from '../config/mysql.js';
 import pool from '../config/mysql.js';
@@ -339,9 +341,22 @@ const resolvers = {
 
       // Get owner details from User model
       const owner = await User.findOne({ username: group.owner }).select('username email mobile');
+      if (!owner) throw new Error('Group owner not found');
+      
       return {
-        ...group.toObject(),
-        owner
+        id: group._id.toString(),
+        name: group.name,
+        totalPoolAmount: group.totalPoolAmount,
+        totalMonths: group.totalMonths,
+        status: group.status,
+        shuffleDate: group.shuffleDate ? group.shuffleDate.toISOString() : null,
+        createdAt: group.createdAt.toISOString(),
+        owner: {
+          id: owner._id.toString(),
+          username: owner.username,
+          email: owner.email,
+          mobile: owner.mobile
+        }
       };
     },
 
@@ -351,7 +366,62 @@ const resolvers = {
       const isParticipant = await isGroupParticipant(groupId, user.username);
       if (!isParticipant) throw new Error('Not authorized to view this group');
       
-      return getGroupParticipants(groupId);
+      const participants = await getGroupParticipants(groupId);
+
+      // Format dates and ensure correct types
+      return participants.map(p => {
+        let joinedAtISO = null;
+        if (p.joinedAt) {
+          try {
+            if (typeof p.joinedAt === 'object' && p.joinedAt.year) {
+              const date = new Date(
+                Number(p.joinedAt.year),
+                Number(p.joinedAt.month) - 1, 
+                Number(p.joinedAt.day),
+                Number(p.joinedAt.hour),
+                Number(p.joinedAt.minute),
+                Number(p.joinedAt.second)
+              );
+              joinedAtISO = date.toISOString();
+            } else {
+              joinedAtISO = p.joinedAt;
+            }
+          } catch (error) {
+            console.error('Error converting joinedAt date:', error);
+            joinedAtISO = null;
+          }
+        }
+
+        let wonAtISO = null;
+        if (p.wonAt) {
+          try {
+            if (typeof p.wonAt === 'object' && p.wonAt.year) {
+              const date = new Date(
+                Number(p.wonAt.year),
+                Number(p.wonAt.month) - 1,
+                Number(p.wonAt.day),
+                Number(p.wonAt.hour),
+                Number(p.wonAt.minute),
+                Number(p.wonAt.second)
+              );
+              wonAtISO = date.toISOString();
+            } else {
+              wonAtISO = p.wonAt;
+            }
+          } catch (error) {
+            console.error('Error converting wonAt date:', error);
+            wonAtISO = null;
+          }
+        }
+
+        return {
+          username: p.username,
+          joinedAt: joinedAtISO,
+          wonMonth: p.wonMonth || null,
+          wonAmount: p.wonAmount || null,
+          wonAt: wonAtISO,
+        };
+      });
     },
 
     groupWinners: async (_, { groupId }, { user }) => {
@@ -385,6 +455,38 @@ const resolvers = {
       } catch (error) {
         console.error('Error fetching transactions:', error);
         throw new Error('Failed to fetch transactions');
+      }
+    },
+
+    getGroupOutgoingInvites: async (_, { groupId }, { user }) => {
+      if (!user) throw new Error('Not authenticated');
+
+      try {
+        const isOwner = await isGroupOwner(groupId, user.username);
+        if (!isOwner) throw new Error('Not authorized to view outgoing invites for this group');
+
+        // Assuming getGroupOutgoingInvites exists in neo4j.js and returns usernames
+        const outgoingInvites = await getGroupOutgoingInvitesNeo4j(groupId); 
+        return outgoingInvites;
+      } catch (error) {
+        console.error('Error fetching outgoing invites:', error);
+        throw new Error(error.message || 'Failed to fetch outgoing invites');
+      }
+    },
+
+    groupPendingInvites: async (_, { groupId }, { user }) => {
+      if (!user) throw new Error('Not authenticated');
+
+      try {
+        // Any participant of the group should be able to see pending invites
+        const isParticipant = await isGroupParticipant(groupId, user.username);
+        if (!isParticipant) throw new Error('Not authorized to view pending invites for this group');
+
+        const pendingInvites = await getGroupPendingInvitesNeo4j(groupId);
+        return pendingInvites;
+      } catch (error) {
+        console.error('Error fetching group pending invites:', error);
+        throw new Error(error.message || 'Failed to fetch group pending invites');
       }
     },
   },
@@ -616,27 +718,49 @@ const resolvers = {
       if (!user) throw new Error('Not authenticated');
 
       try {
+        // Validate totalMonths
+        if (totalMonths < 1 || totalMonths > 12) {
+          throw new Error('Group duration must be between 1 and 12 months');
+        }
+
         // Create group in MongoDB with username as owner
         const group = new Group({
           name,
           owner: user.username,
           totalPoolAmount,
-          totalMonths
+          totalMonths,
+          status: 'waiting',
+          createdAt: new Date()
         });
 
-        await group.save();
+        const savedGroup = await group.save();
+        if (!savedGroup || !savedGroup._id) {
+          throw new Error('Failed to create group');
+        }
 
         // Create group node and relationships in Neo4j
-        await createGroupNode(group._id.toString(), name, user.username);
+        await createGroupNode(savedGroup._id.toString(), name, user.username);
 
         // Get owner details for response
         const owner = await User.findOne({ username: user.username }).select('username email mobile');
+        
         return {
-          ...group.toObject(),
-          owner
+          id: savedGroup._id.toString(),
+          name: savedGroup.name,
+          totalPoolAmount: savedGroup.totalPoolAmount,
+          totalMonths: savedGroup.totalMonths,
+          status: savedGroup.status,
+          createdAt: savedGroup.createdAt.toISOString(),
+          owner: {
+            id: owner._id.toString(),
+            username: owner.username,
+            email: owner.email,
+            mobile: owner.mobile
+          }
         };
       } catch (error) {
-        throw new Error(error.message);
+        console.error('Error creating group:', error);
+        throw new Error(error.message || 'Failed to create group');
       }
     },
 
@@ -669,6 +793,59 @@ const resolvers = {
         return true;
       } catch (error) {
         throw new Error(error.message);
+      }
+    },
+
+    updateGroupDetails: async (_, { groupId, name, totalPoolAmount, totalMonths }, { user }) => {
+      if (!user) throw new Error('Not authenticated');
+
+      try {
+        const group = await Group.findById(groupId);
+        if (!group) throw new Error('Group not found');
+
+        const isOwner = await isGroupOwner(groupId, user.username);
+        if (!isOwner) throw new Error('Only group owner can update group details');
+
+        if (group.status !== 'waiting') {
+          throw new Error('Group details can only be updated when the group is in waiting status');
+        }
+
+        // Update fields if provided
+        if (name !== undefined) {
+          group.name = name;
+        }
+        if (totalPoolAmount !== undefined) {
+          group.totalPoolAmount = totalPoolAmount;
+        }
+        if (totalMonths !== undefined) {
+          if (totalMonths < 1 || totalMonths > 12) {
+            throw new Error('Group duration must be between 1 and 12 months');
+          }
+          group.totalMonths = totalMonths;
+        }
+
+        const updatedGroup = await group.save();
+
+        // Get owner details for response
+        const owner = await User.findOne({ username: updatedGroup.owner }).select('username email mobile');
+
+        return {
+          id: updatedGroup._id.toString(),
+          name: updatedGroup.name,
+          totalPoolAmount: updatedGroup.totalPoolAmount,
+          totalMonths: updatedGroup.totalMonths,
+          status: updatedGroup.status,
+          createdAt: updatedGroup.createdAt.toISOString(),
+          owner: {
+            id: owner._id.toString(),
+            username: owner.username,
+            email: owner.email,
+            mobile: owner.mobile
+          }
+        };
+      } catch (error) {
+        console.error('Error updating group details:', error);
+        throw new Error(error.message || 'Failed to update group details');
       }
     },
 

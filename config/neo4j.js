@@ -453,14 +453,52 @@ export const acceptGroupInvite = async (groupId, username) => {
 export const rejectGroupInvite = async (groupId, username) => {
   const session = driver.session();
   try {
-    await session.run(
-      `MATCH (u:User {username: $username})-[invite:INVITED_TO]->(g:Group {id: $groupId})
-       DELETE invite`,
+    const result = await session.run(
+      `MATCH (u:User {username: $username})-[r:INVITED_TO]->(g:Group {id: $groupId})
+       DELETE r`,
       { groupId, username }
     );
-    console.log(`User ${username} rejected invite to group ${groupId}`);
+    if (result.summary.counters.updates().nodesDeleted === 0) {
+      throw new Error('No invitation found to reject');
+    }
+    console.log(`Rejected group invite for ${username} to group ${groupId}`);
   } catch (error) {
     console.error('Error rejecting group invite:', error);
+    throw error;
+  } finally {
+    await session.close();
+  }
+};
+
+// Get all outgoing group invites for a specific group (initiated by the owner)
+export const getGroupOutgoingInvitesNeo4j = async (groupId) => {
+  const session = driver.session();
+  try {
+    const result = await session.run(
+      `MATCH (u:User)-[invite:INVITED_TO]->(g:Group {id: $groupId})
+       RETURN u.username AS invitedUsername`,
+      { groupId }
+    );
+    return result.records.map(record => record.get('invitedUsername'));
+  } catch (error) {
+    console.error('Error fetching outgoing group invites:', error);
+    throw error;
+  } finally {
+    await session.close();
+  }
+};
+
+export const getGroupPendingInvitesNeo4j = async (groupId) => {
+  const session = driver.session();
+  try {
+    const result = await session.run(
+      `MATCH (u:User)-[:INVITED_TO]->(g:Group {id: $groupId})
+       RETURN u.username AS invitedUsername`,
+      { groupId }
+    );
+    return result.records.map(record => record.get('invitedUsername'));
+  } catch (error) {
+    console.error('Error fetching group pending invites:', error);
     throw error;
   } finally {
     await session.close();

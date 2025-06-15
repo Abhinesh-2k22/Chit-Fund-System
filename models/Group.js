@@ -8,24 +8,28 @@ const groupSchema = new mongoose.Schema({
   },
   owner: {
     type: String,
-    required: true
+    required: true,
+    ref: 'User'
   },
   totalPoolAmount: {
     type: Number,
-    required: true
+    required: true,
+    min: 1000
   },
   totalMonths: {
     type: Number,
-    required: true
-  },
-  shuffleDate: {
-    type: Date,
-    default: null
+    required: true,
+    min: 1,
+    max: 12
   },
   status: {
     type: String,
-    enum: ['waiting', 'started'],
+    required: true,
+    enum: ['waiting', 'started', 'completed'],
     default: 'waiting'
+  },
+  shuffleDate: {
+    type: Date
   },
   createdAt: {
     type: Date,
