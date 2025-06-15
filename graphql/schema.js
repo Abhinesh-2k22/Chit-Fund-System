@@ -31,6 +31,7 @@ const typeDefs = gql`
     nextPayment: Float!
     totalPaid: Float!
     remainingPayments: Int!
+    currentBid: Bid
   }
 
   type GroupParticipant {
@@ -69,6 +70,10 @@ const typeDefs = gql`
     groupWinners(groupId: ID!): [GroupWinner!]!
     getGroupOutgoingInvites(groupId: ID!): [String!]!
     groupPendingInvites(groupId: ID!): [String!]!
+    
+    # Bidding queries
+    getCurrentBid(groupId: ID!): Bid
+    getBidHistory(groupId: ID!): [Bid!]!
   }
 
   type Mutation {
@@ -135,6 +140,17 @@ const typeDefs = gql`
 
     # Fund mutations
     addFund(amount: Int!): AddFundResponse!
+
+    # Bidding mutations
+    placeBid(
+      groupId: ID!
+      bidAmount: Float!
+    ): Bid!
+
+    selectWinner(
+      groupId: ID!
+      bidId: ID!
+    ): Boolean!
   }
 
   type GroupInvite {
@@ -156,6 +172,15 @@ const typeDefs = gql`
     amount: Float!
     description: String!
     timeStamp: String!
+  }
+
+  type Bid {
+    id: ID!
+    groupId: ID!
+    username: String!
+    bidAmount: Float!
+    createdAt: String!
+    isWinner: Boolean!
   }
 `;
 

@@ -491,6 +491,78 @@ const resolvers = {
         throw new Error(error.message || 'Failed to fetch group pending invites');
       }
     },
+
+    getCurrentBid: async (_, { groupId }, { user }) => {
+      if (!user) throw new Error('Not authenticated');
+      
+      try {
+        // Check if user is a participant in the group
+        const isParticipant = await isGroupParticipant(groupId, user.username);
+        if (!isParticipant) {
+          throw new Error('Not authorized to view bids for this group');
+        }
+
+        // Get the lowest bid for the group
+        const [rows] = await pool.query(
+          `SELECT 
+            id, 
+            group_id as groupId,
+            bid_amount as bidAmount, 
+            username, 
+            created_at as createdAt,
+            is_winner as isWinner 
+          FROM bids 
+          WHERE group_id = ? 
+          ORDER BY bid_amount ASC 
+          LIMIT 1`,
+          [groupId]
+        );
+
+        return rows[0] || null;
+      } catch (error) {
+        console.error('Error fetching current bid:', error);
+        throw new Error('Failed to fetch current bid');
+      }
+    },
+
+    getBidHistory: async (_, { groupId }, { user }) => {
+      if (!user) throw new Error('Not authenticated');
+      
+      try {
+        // Check if user is a participant in the group
+        const isParticipant = await isGroupParticipant(groupId, user.username);
+        if (!isParticipant) {
+          throw new Error('Not authorized to view bids for this group');
+        }
+
+        // Get the group details to check pool amount
+        const group = await Group.findById(groupId);
+        if (!group) {
+          throw new Error('Group not found');
+        }
+
+        // Get all valid bids for the group (bids lower than pool amount)
+        const [rows] = await pool.query(
+          `SELECT 
+            id, 
+            group_id as groupId,
+            bid_amount as bidAmount, 
+            username, 
+            DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') as createdAt,
+            is_winner as isWinner 
+          FROM bids 
+          WHERE group_id = ? 
+          AND bid_amount < ?
+          ORDER BY bid_amount ASC`,
+          [groupId, group.totalPoolAmount]
+        );
+
+        return rows;
+      } catch (error) {
+        console.error('Error fetching bid history:', error);
+        throw new Error('Failed to fetch bid history');
+      }
+    }
   },
 
   Mutation: {
@@ -1013,6 +1085,119 @@ const resolvers = {
         throw new Error(error.message || 'Failed to add funds');
       }
     },
+
+    placeBid: async (_, { groupId, bidAmount }, { user }) => {
+      if (!user) throw new Error('Not authenticated');
+      
+      try {
+        // Check if user is a participant in the group
+        const isParticipant = await isGroupParticipant(groupId, user.username);
+        if (!isParticipant) {
+          throw new Error('Not authorized to place bids in this group');
+        }
+
+        // Get the group details to check pool amount
+        const group = await Group.findById(groupId);
+        if (!group) {
+          throw new Error('Group not found');
+        }
+
+        // Get the current lowest bid
+        const [currentBid] = await pool.query(
+          'SELECT bid_amount FROM bids WHERE group_id = ? ORDER BY bid_amount ASC LIMIT 1',
+          [groupId]
+        );
+
+        // If there's no current bid, use the pool amount as the limit
+        const currentLowestBid = currentBid ? currentBid.bid_amount : group.totalPoolAmount;
+
+        // Validate bid amount
+        if (bidAmount <= 0) {
+          throw new Error('Bid amount must be greater than 0');
+        }
+
+        // Strict validation for bid amount
+        if (bidAmount >= currentLowestBid) {
+          throw new Error(`Your bid must be lower than ₹${currentLowestBid.toLocaleString()}`);
+        }
+
+        // Double check against pool amount
+        if (bidAmount >= group.totalPoolAmount) {
+          throw new Error(`Your bid must be lower than the pool amount of ₹${group.totalPoolAmount.toLocaleString()}`);
+        }
+
+        // Start a transaction to ensure data consistency
+        const connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        try {
+          // Insert the new bid
+          const [result] = await connection.query(
+            'INSERT INTO bids (group_id, username, bid_amount) VALUES (?, ?, ?)',
+            [groupId, user.username, bidAmount]
+          );
+
+          // Get the inserted bid
+          const [newBid] = await connection.query(
+            'SELECT id, bid_amount as bidAmount, username, DATE_FORMAT(created_at, "%Y-%m-%d %H:%i:%s") as createdAt FROM bids WHERE id = ?',
+            [result.insertId]
+          );
+
+          await connection.commit();
+          return newBid[0];
+        } catch (error) {
+          await connection.rollback();
+          throw error;
+        } finally {
+          connection.release();
+        }
+      } catch (error) {
+        console.error('Error placing bid:', error);
+        throw new Error(error.message || 'Failed to place bid');
+      }
+    },
+
+    selectWinner: async (_, { groupId, bidId }, { user }) => {
+      if (!user) throw new Error('Not authenticated');
+      
+      try {
+        // Check if user is the group owner
+        const isOwner = await isGroupOwner(user.username, groupId);
+        if (!isOwner) {
+          throw new Error('Only the group owner can select a winner');
+        }
+
+        // Get the group status
+        const group = await Group.findById(groupId);
+        if (!group) {
+          throw new Error('Group not found');
+        }
+
+        if (group.status !== 'BIDDING') {
+          throw new Error('Can only select a winner during the bidding phase');
+        }
+
+        // Update the bid as winner
+        await pool.query(
+          'UPDATE bids SET is_winner = TRUE WHERE id = ? AND group_id = ?',
+          [bidId, groupId]
+        );
+
+        // Get the updated bid
+        const [winnerBid] = await pool.query(
+          'SELECT id, bid_amount as bidAmount, username, created_at as createdAt, is_winner as isWinner FROM bids WHERE id = ?',
+          [bidId]
+        );
+
+        // Record the winner in Neo4j
+        await recordWinner(groupId, winnerBid[0].username);
+
+        return winnerBid[0];
+      } catch (error) {
+        console.error('Error selecting winner:', error);
+        throw new Error(error.message || 'Failed to select winner');
+      }
+    }
   }
 };
 

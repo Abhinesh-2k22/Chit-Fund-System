@@ -598,9 +598,11 @@ const GroupDetails = () => {
                 )}
 
                 {activeTab === 'bid' && (
-                  <Bidding 
-                    shuffleDate={data?.groupDetails?.shuffleDate} 
-                    status={data?.groupDetails?.status} 
+                  <Bidding
+                    groupId={groupId}
+                    shuffleDate={data?.groupDetails?.shuffleDate}
+                    status={data?.groupDetails?.status}
+                    isOwner={data?.groupDetails?.owner?.username === user?.username}
                   />
                 )}
               </div>

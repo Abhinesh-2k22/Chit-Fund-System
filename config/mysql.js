@@ -16,12 +16,45 @@ const pool = mysql.createPool({
 
 export const initializeMySQL = async () => {
   try {
-    const [rows] = await pool.query('SELECT 1 + 1 AS solution');
-    console.log('MySQL connection pool created successfully.');
-    console.log('Solution from MySQL query:', rows[0].solution);
+    // Create users table if not exists
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        username VARCHAR(255) PRIMARY KEY,
+        balance DECIMAL(10,2) DEFAULT 0
+      )
+    `);
+
+    // Create transfer table if not exists
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS transfer (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        from_field VARCHAR(255),
+        to_field VARCHAR(255),
+        amount DECIMAL(10,2),
+        description TEXT,
+        time_stamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (from_field) REFERENCES users(username),
+        FOREIGN KEY (to_field) REFERENCES users(username)
+      )
+    `);
+
+    // Create bids table if not exists
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS bids (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        group_id VARCHAR(255) NOT NULL,
+        username VARCHAR(255) NOT NULL,
+        bid_amount DECIMAL(10,2) NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        is_winner BOOLEAN DEFAULT FALSE,
+        FOREIGN KEY (username) REFERENCES users(username)
+      )
+    `);
+
+    console.log('MySQL tables initialized successfully');
   } catch (error) {
-    console.error('Error initializing MySQL connection pool:', error);
-    process.exit(1); // Exit if MySQL connection fails
+    console.error('Error initializing MySQL tables:', error);
+    throw error;
   }
 };
 

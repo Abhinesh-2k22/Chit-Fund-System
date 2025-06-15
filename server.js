@@ -5,6 +5,8 @@ import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import cookieParser from 'cookie-parser';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
 import typeDefs from './graphql/schema.js';
 import resolvers from './graphql/resolvers.js';
 
@@ -28,6 +30,54 @@ console.log('CORS middleware configured');
 
 app.use(express.json());
 console.log('JSON middleware added');
+
+// Create HTTP server
+const httpServer = createServer(app);
+
+// Initialize Socket.IO
+const io = new Server(httpServer, {
+  cors: {
+    origin: ['http://localhost:3000', 'http://localhost:5173'],
+    methods: ['GET', 'POST'],
+    credentials: true
+  }
+});
+
+// Store active group rooms
+const activeGroups = new Set();
+
+// Socket.IO connection handling
+io.on('connection', (socket) => {
+  console.log('Client connected:', socket.id);
+
+  // Handle joining a group room
+  socket.on('joinGroup', (groupId) => {
+    socket.join(groupId);
+    activeGroups.add(groupId);
+    console.log(`Client ${socket.id} joined group ${groupId}`);
+  });
+
+  // Handle new bids
+  socket.on('newBid', (groupId) => {
+    if (activeGroups.has(groupId)) {
+      io.to(groupId).emit('newBid');
+      console.log(`New bid notification sent to group ${groupId}`);
+    }
+  });
+
+  // Handle winner selection
+  socket.on('winnerSelected', (groupId) => {
+    if (activeGroups.has(groupId)) {
+      io.to(groupId).emit('winnerSelected');
+      console.log(`Winner selection notification sent to group ${groupId}`);
+    }
+  });
+
+  // Handle disconnection
+  socket.on('disconnect', () => {
+    console.log('Client disconnected:', socket.id);
+  });
+});
 
 // MongoDB connection
 console.log('Attempting to connect to MongoDB...');
@@ -92,7 +142,7 @@ async function startServer() {
     console.log('Apollo middleware applied');
 
     const PORT = process.env.PORT || 4000;
-    app.listen(PORT, () => {
+    httpServer.listen(PORT, () => {
       console.log(`Server running at http://localhost:${PORT}/graphql`);
       console.log('Server is ready to accept connections');
     });
