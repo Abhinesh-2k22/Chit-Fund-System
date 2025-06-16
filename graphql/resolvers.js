@@ -12,7 +12,6 @@ import {
   getUserConnections,
   removeConnection,
   createGroupNode,
-  addGroupParticipant,
   removeGroupParticipant,
   getUserGroups,
   getGroupParticipants,
@@ -63,7 +62,8 @@ const resolvers = {
         age: freshUser.age,
         gender: freshUser.gender,
         lastLogin: freshUser.lastLogin ? freshUser.lastLogin.toISOString() : null,
-        balance: balance
+        balance: balance,
+        createdAt: freshUser.createdAt ? freshUser.createdAt.toISOString() : null
       };
     },
 

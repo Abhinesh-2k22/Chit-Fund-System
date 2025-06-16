@@ -198,11 +198,6 @@ const HomePage = () => {
                     </div>
                   )}
 
-                  {/* Payment Status */}
-                  <div className="flex items-center text-gray-700">
-                    <FaMoneyBillWave className="mr-2" />
-                    <span>Next Payment: {formatCurrency(group.nextPayment)}</span>
-                  </div>
 
                   {/* Progress */}
                   <div className="mt-4">

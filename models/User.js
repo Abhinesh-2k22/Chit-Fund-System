@@ -38,12 +38,10 @@ const UserSchema = new mongoose.Schema({
     }
   },
   age: { 
-    type: Number, 
-    required: true 
+    type: Number
   },
   gender: { 
-    type: String, 
-    required: true,
+    type: String,
     enum: ['male', 'female', 'other']
   },
   createdAt: { 

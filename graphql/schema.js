@@ -10,6 +10,7 @@ const typeDefs = gql`
     gender: String
     lastLogin: String
     balance: Float
+    createdAt: String
   }
 
   type Group {

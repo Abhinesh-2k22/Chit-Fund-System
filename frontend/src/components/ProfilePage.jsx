@@ -13,7 +13,7 @@ const GET_USER_DATA = gql`
       mobile
       age
       gender
-      lastLogin
+      createdAt
     }
   }
 `;
@@ -52,13 +52,12 @@ const ProfilePage = () => {
     if (!timestamp) return 'Not available';
     
     try {
-      // Handle both Unix timestamp and ISO string
       const date = new Date(timestamp);
       if (isNaN(date.getTime())) {
         return 'Invalid date';
       }
       
-      return date.toLocaleDateString('en-US', {
+      return date.toLocaleDateString('en-IN', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
@@ -162,7 +161,7 @@ const ProfilePage = () => {
                   </div>
                   <div>
                     <h2 className="text-3xl font-bold text-gray-900">{user.username}</h2>
-                    <p className="text-gray-600">Last login: {formatDate(user.lastLogin)}</p>
+                    <p className="text-gray-600">Member since: {formatDate(user.createdAt)}</p>
                   </div>
                 </div>
                 <button
@@ -232,8 +231,8 @@ const ProfilePage = () => {
                     <div className="flex items-start space-x-3">
                       <FaClock className="text-gray-400 mt-1" />
                       <div>
-                        <p className="text-sm font-medium text-gray-500">Last Login</p>
-                        <p className="text-gray-900">{formatDate(user.lastLogin)}</p>
+                        <p className="text-sm font-medium text-gray-500">Account Created</p>
+                        <p className="text-gray-900">{formatDate(user.createdAt)}</p>
                       </div>
                     </div>
                   </div>
