@@ -137,6 +137,8 @@ const Bidding = ({ groupId }) => {
     console.log('Shuffle Date:', groupData?.groupDetails?.shuffleDate);
     
     if (groupData?.groupDetails?.shuffleDate) {
+      let hasSelectedWinner = false; // Flag to prevent multiple calls
+
       const calculateTimeLeft = () => {
         const now = new Date().getTime();
         const shuffleTime = new Date(groupData.groupDetails.shuffleDate).getTime();
@@ -146,13 +148,15 @@ const Bidding = ({ groupId }) => {
         console.log('Current time:', new Date(now));
         console.log('Shuffle time:', new Date(shuffleTime));
 
-        if (difference <= 0) {
+        if (difference <= 0 && !hasSelectedWinner) {
           setTimeLeft(null);
+          hasSelectedWinner = true; // Set flag to prevent multiple calls
           // Call selectWinner mutation when time is up
           selectWinner({
             variables: { groupId }
           }).catch(error => {
             console.error('Failed to select winner:', error);
+            hasSelectedWinner = false; // Reset flag if there's an error
           });
           return;
         }
@@ -169,7 +173,10 @@ const Bidding = ({ groupId }) => {
       calculateTimeLeft();
       const timer = setInterval(calculateTimeLeft, 1000);
 
-      return () => clearInterval(timer);
+      return () => {
+        clearInterval(timer);
+        hasSelectedWinner = false; // Reset flag when component unmounts
+      };
     }
   }, [groupData?.groupDetails?.shuffleDate, groupId, selectWinner]);
 

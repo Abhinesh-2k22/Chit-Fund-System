@@ -1245,6 +1245,14 @@ const resolvers = {
           return true;
         }
 
+        // Get all winners so far
+        const winners = await resolvers.Query.isWinner(null, { groupId }, { user });
+        console.log('Current winners:', winners);
+
+        // Get all participants
+        const participants = await getGroupParticipants(groupId);
+        console.log('All participants:', participants);
+
         // Get the current lowest bid using existing query
         const currentBid = await resolvers.Query.getCurrentBid(null, { groupId }, { user });
         console.log('Current lowest bid:', currentBid);
@@ -1254,43 +1262,100 @@ const resolvers = {
         await connection.beginTransaction();
 
         try {
-          // If there's a current bid, update it as winner
+          let winnerSelected = false;
+
+          // If there's a current bid
           if (currentBid) {
-            console.log('Updating winning bid for bid ID:', currentBid.id);
-            const [updateResult] = await connection.query(
-              'UPDATE bids SET is_winner = 1 WHERE id = ?',
-              [currentBid.id]
-            );
-            console.log('Bid update result:', updateResult);
-          }
+            // If current bid equals pool amount, select random non-winner
+            if (currentBid.bidAmount === group.totalPoolAmount) {
+              console.log('Lowest bid equals pool amount, selecting random non-winner');
+              
+              // Filter out winners from participants
+              const nonWinners = participants.filter(p => 
+                !winners.some(w => w.username === p.username)
+              );
+              
+              if (nonWinners.length > 0) {
+                // Select random non-winner
+                const randomIndex = Math.floor(Math.random() * nonWinners.length);
+                const selectedWinner = nonWinners[randomIndex];
+                console.log('Selected random winner:', selectedWinner);
 
-          // Increment current month
-          const oldMonth = group.currentmonth;
-          group.currentmonth += 1;
-          console.log('Incrementing month from', oldMonth, 'to', group.currentmonth);
-
-          // If we haven't reached the end, update shuffle date
-          if (group.currentmonth <= group.totalMonths) {
-            // Calculate new shuffle date (30 days from now)
-            const oldShuffleDate = group.shuffleDate;
-            const newShuffleDate = new Date();
-            newShuffleDate.setDate(newShuffleDate.getDate() + 30);
-            group.shuffleDate = newShuffleDate;
-            console.log('Updating shuffle date from', oldShuffleDate, 'to', newShuffleDate);
+                // Insert new bid for random winner
+                const [insertResult] = await connection.query(
+                  `INSERT INTO bids (group_id, username, bid_amount, current_month, is_winner) 
+                   VALUES (?, ?, ?, ?, 1)`,
+                  [groupId, selectedWinner.username, group.totalPoolAmount, group.currentmonth]
+                );
+                console.log('Inserted bid for random winner:', insertResult);
+                winnerSelected = true;
+              }
+            } else {
+              // Normal case: update existing bid as winner
+              console.log('Updating winning bid for bid ID:', currentBid.id);
+              const [updateResult] = await connection.query(
+                'UPDATE bids SET is_winner = 1 WHERE id = ?',
+                [currentBid.id]
+              );
+              console.log('Bid update result:', updateResult);
+              winnerSelected = true;
+            }
           } else {
-            // If we've reached the end, mark group as completed
-            console.log('Group has reached its end, marking as completed');
-            group.status = 'completed';
+            // No bids exist, select random non-winner
+            console.log('No bids exist, selecting random non-winner');
+            
+            // Filter out winners from participants
+            const nonWinners = participants.filter(p => 
+              !winners.some(w => w.username === p.username)
+            );
+            
+            if (nonWinners.length > 0) {
+              // Select random non-winner
+              const randomIndex = Math.floor(Math.random() * nonWinners.length);
+              const selectedWinner = nonWinners[randomIndex];
+              console.log('Selected random winner:', selectedWinner);
+
+              // Insert new bid for random winner
+              const [insertResult] = await connection.query(
+                `INSERT INTO bids (group_id, username, bid_amount, current_month, is_winner) 
+                 VALUES (?, ?, ?, ?, 1)`,
+                [groupId, selectedWinner.username, group.totalPoolAmount, group.currentmonth]
+              );
+              console.log('Inserted bid for random winner:', insertResult);
+              winnerSelected = true;
+            }
           }
 
-          // Save group updates
-          console.log('Saving group updates...');
-          const savedGroup = await group.save();
-          console.log('Group saved successfully:', {
-            currentmonth: savedGroup.currentmonth,
-            shuffleDate: savedGroup.shuffleDate,
-            status: savedGroup.status
-          });
+          // Only proceed with month increment and shuffle date update if a winner was selected
+          if (winnerSelected) {
+            // Increment current month
+            const oldMonth = group.currentmonth;
+            group.currentmonth += 1;
+            console.log('Incrementing month from', oldMonth, 'to', group.currentmonth);
+
+            // If we haven't reached the end, update shuffle date
+            if (group.currentmonth <= group.totalMonths) {
+              // Calculate new shuffle date (30 days from now)
+              const oldShuffleDate = group.shuffleDate;
+              const newShuffleDate = new Date();
+              newShuffleDate.setDate(newShuffleDate.getDate() + 30);
+              group.shuffleDate = newShuffleDate;
+              console.log('Updating shuffle date from', oldShuffleDate, 'to', newShuffleDate);
+            } else {
+              // If we've reached the end, mark group as completed
+              console.log('Group has reached its end, marking as completed');
+              group.status = 'completed';
+            }
+
+            // Save group updates
+            console.log('Saving group updates...');
+            const savedGroup = await group.save();
+            console.log('Group saved successfully:', {
+              currentmonth: savedGroup.currentmonth,
+              shuffleDate: savedGroup.shuffleDate,
+              status: savedGroup.status
+            });
+          }
 
           // Commit transaction
           await connection.commit();
