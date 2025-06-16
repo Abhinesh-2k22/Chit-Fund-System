@@ -158,7 +158,13 @@ const Funds = () => {
               {balanceLoading ? (
                 <div className="animate-pulse h-8 bg-gray-200 rounded w-32"></div>
               ) : (
-                <p className="text-3xl font-bold text-gray-900">₹{balance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                <p className={`text-3xl font-bold ${
+                  balance < 0 ? 'text-red-600' : 
+                  balance === 0 ? 'text-gray-900' : 
+                  'text-green-600'
+                }`}>
+                  ₹{balance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
               )}
             </div>
 

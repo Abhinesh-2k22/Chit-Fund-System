@@ -1342,6 +1342,84 @@ const resolvers = {
 
           // Only proceed with month increment and shuffle date update if a winner was selected
           if (winnerSelected) {
+            // Get the winning bid amount
+            let winningBidAmount = 0;
+            if (currentBid) {
+              winningBidAmount = currentBid.bidAmount;
+            } else {
+              winningBidAmount = group.totalPoolAmount;
+            }
+
+            // Calculate fund amount for each participant using new formula and round to 3 decimal places
+            const fundAmount = Number(((group.totalPoolAmount / participants.length) - ((group.totalPoolAmount - winningBidAmount) / participants.length)).toFixed(3));
+            console.log('Calculated fund amount:', fundAmount);
+
+            // Get the winner's username
+            let winnerUsername;
+            if (currentBid) {
+              winnerUsername = currentBid.username;
+            } else {
+              // Find the winner from the last inserted bid
+              const [lastBid] = await connection.query(
+                'SELECT username FROM bids WHERE group_id = ? AND current_month = ? AND is_winner = 1 ORDER BY id DESC LIMIT 1',
+                [groupId, group.currentmonth]
+              );
+              winnerUsername = lastBid[0].username;
+            }
+
+            console.log('Winner username:', winnerUsername);
+
+            // Transfer funds from each participant to the winner
+            for (const participant of participants) {
+              if (participant.username !== winnerUsername) {
+                try {
+                  console.log('Attempting fund transfer:', {
+                    from: participant.username,
+                    to: winnerUsername,
+                    fund: fundAmount,
+                    groupName: group.name,
+                    currentMonth: group.currentmonth
+                  });
+
+                  // Update from user's balance (allow negative balance)
+                  const [updateFromResult] = await connection.query(
+                    'UPDATE users SET balance = balance - ? WHERE username = ?',
+                    [fundAmount, participant.username]
+                  );
+
+                  if (updateFromResult.affectedRows === 0) {
+                    throw new Error(`Failed to update balance for user ${participant.username}`);
+                  }
+
+                  // Update to user's balance
+                  const [updateToResult] = await connection.query(
+                    'UPDATE users SET balance = balance + ? WHERE username = ?',
+                    [fundAmount, winnerUsername]
+                  );
+
+                  if (updateToResult.affectedRows === 0) {
+                    throw new Error(`Failed to update balance for user ${winnerUsername}`);
+                  }
+
+                  // Add transfer record
+                  const description = `payment from ${group.name} for month ${group.currentmonth} by ${participant.username}`;
+                  const [transferResult] = await connection.query(
+                    'INSERT INTO transfer (from_field, to_field, amount, description, time_stamp) VALUES (?, ?, ?, ?, NOW())',
+                    [participant.username, winnerUsername, fundAmount, description]
+                  );
+
+                  if (!transferResult.insertId) {
+                    throw new Error('Failed to record transfer');
+                  }
+
+                  console.log(`Fund transfer completed for participant ${participant.username}`);
+                } catch (error) {
+                  console.error(`Failed to transfer funds for participant ${participant.username}:`, error);
+                  throw new Error(`Failed to transfer funds: ${error.message}`);
+                }
+              }
+            }
+
             // Only increment month if we haven't reached total months
             if (group.currentmonth < group.totalMonths) {
               const oldMonth = group.currentmonth;
