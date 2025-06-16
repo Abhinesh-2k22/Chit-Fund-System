@@ -322,13 +322,21 @@ const Bidding = ({ groupId }) => {
             placeholder="Enter your bid amount"
             step="0.01"
             min="0"
+            disabled={groupData?.groupDetails?.currentmonth === groupData?.groupDetails?.totalMonths}
           />
         </div>
         <button
           type="submit"
-          className="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 transition-colors"
+          className={`w-full py-2 px-4 rounded transition-colors ${
+            groupData?.groupDetails?.currentmonth === groupData?.groupDetails?.totalMonths
+              ? 'bg-gray-400 cursor-not-allowed'
+              : 'bg-blue-600 hover:bg-blue-700 text-white'
+          }`}
+          disabled={groupData?.groupDetails?.currentmonth === groupData?.groupDetails?.totalMonths}
         >
-          Place Bid
+          {groupData?.groupDetails?.currentmonth === groupData?.groupDetails?.totalMonths
+            ? 'Bidding Closed'
+            : 'Place Bid'}
         </button>
       </form>
       )}

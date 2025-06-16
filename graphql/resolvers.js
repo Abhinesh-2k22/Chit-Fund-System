@@ -1237,14 +1237,6 @@ const resolvers = {
           throw new Error('Group is not in started status');
         }
 
-        // Check if current month is less than or equal to total months
-        if (group.currentmonth >= group.totalMonths) {
-          console.log('Group has reached its end, marking as completed');
-          group.status = 'completed';
-          await group.save();
-          return true;
-        }
-
         // Get all winners so far
         const winners = await resolvers.Query.isWinner(null, { groupId }, { user });
         console.log('Current winners:', winners);
@@ -1264,8 +1256,30 @@ const resolvers = {
         try {
           let winnerSelected = false;
 
-          // If there's a current bid
-          if (currentBid) {
+          // If current month equals total months, select the last non-winner
+          if (group.currentmonth === group.totalMonths) {
+            console.log('Last month reached, selecting remaining participant as winner');
+            
+            // Filter out winners from participants
+            const nonWinners = participants.filter(p => 
+              !winners.some(w => w.username === p.username)
+            );
+            
+            if (nonWinners.length > 0) {
+              // Select the last non-winner
+              const selectedWinner = nonWinners[0];
+              console.log('Selected last participant as winner:', selectedWinner);
+
+              // Insert new bid for the last participant
+              const [insertResult] = await connection.query(
+                `INSERT INTO bids (group_id, username, bid_amount, current_month, is_winner) 
+                 VALUES (?, ?, ?, ?, 1)`,
+                [groupId, selectedWinner.username, group.totalPoolAmount, group.currentmonth]
+              );
+              console.log('Inserted bid for last participant:', insertResult);
+              winnerSelected = true;
+            }
+          } else if (currentBid) {
             // If current bid equals pool amount, select random non-winner
             if (currentBid.bidAmount === group.totalPoolAmount) {
               console.log('Lowest bid equals pool amount, selecting random non-winner');
@@ -1328,13 +1342,12 @@ const resolvers = {
 
           // Only proceed with month increment and shuffle date update if a winner was selected
           if (winnerSelected) {
-            // Increment current month
-            const oldMonth = group.currentmonth;
-            group.currentmonth += 1;
-            console.log('Incrementing month from', oldMonth, 'to', group.currentmonth);
+            // Only increment month if we haven't reached total months
+            if (group.currentmonth < group.totalMonths) {
+              const oldMonth = group.currentmonth;
+              group.currentmonth += 1;
+              console.log('Incrementing month from', oldMonth, 'to', group.currentmonth);
 
-            // If we haven't reached the end, update shuffle date
-            if (group.currentmonth <= group.totalMonths) {
               // Calculate new shuffle date (30 days from now)
               const oldShuffleDate = group.shuffleDate;
               const newShuffleDate = new Date();
