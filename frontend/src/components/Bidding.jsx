@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useMutation, useQuery, gql } from '@apollo/client';
 import { io } from 'socket.io-client';
+import { useAuth } from '../context/AuthContext';
 
 const GET_GROUP_DETAILS = gql`
   query GetGroupDetails($groupId: ID!) {
@@ -43,6 +44,17 @@ const GET_BID_HISTORY = gql`
   }
 `;
 
+const GET_WINNING_BIDS = gql`
+  query GetWinningBids($groupId: ID!) {
+    isWinner(groupId: $groupId) {
+      id
+      username
+      bidAmount
+      currentmonth
+    }
+  }
+`;
+
 const PLACE_BID = gql`
   mutation PlaceBid($groupId: ID!, $bidAmount: Float!) {
     placeBid(groupId: $groupId, bidAmount: $bidAmount) {
@@ -71,11 +83,17 @@ const Bidding = ({ groupId }) => {
   const [error, setError] = useState('');
   const [socket, setSocket] = useState(null);
   const [timeLeft, setTimeLeft] = useState(null);
+  const { user } = useAuth();
 
   const { data: groupData, loading: groupLoading } = useQuery(GET_GROUP_DETAILS, {
     variables: { groupId },
     pollInterval: 2000,
     fetchPolicy: 'network-only'
+  });
+
+  const { data: winningBidsData } = useQuery(GET_WINNING_BIDS, {
+    variables: { groupId },
+    skip: groupData?.groupDetails?.status !== 'started'
   });
 
   // Calculate time left until shuffle date
@@ -184,6 +202,11 @@ const Bidding = ({ groupId }) => {
     }
   });
 
+  // Check if current user is a winner
+  const isWinner = winningBidsData?.isWinner?.some(
+    bid => bid.username === user?.username
+  );
+
   const handlePlaceBid = async (e) => {
     e.preventDefault();
     if (!bidAmount || isNaN(bidAmount) || bidAmount <= 0) {
@@ -278,29 +301,31 @@ const Bidding = ({ groupId }) => {
         )}
       </div>
 
-      <form onSubmit={handlePlaceBid} className="mb-6">
-        <div className="mb-4">
-          <label htmlFor="bidAmount" className="block text-sm font-medium text-gray-700 mb-1">
-            Your Bid Amount (₹)
-          </label>
-          <input
-            type="number"
-            id="bidAmount"
-            value={bidAmount}
-            onChange={(e) => setBidAmount(e.target.value)}
-            className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500"
-            placeholder="Enter your bid amount"
-            step="0.01"
-            min="0"
-          />
-        </div>
-        <button
-          type="submit"
-          className="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 transition-colors"
-        >
-          Place Bid
-        </button>
-      </form>
+      {!isWinner && (
+        <form onSubmit={handlePlaceBid} className="mb-6">
+          <div className="mb-4">
+            <label htmlFor="bidAmount" className="block text-sm font-medium text-gray-700 mb-1">
+              Your Bid Amount (₹)
+            </label>
+            <input
+              type="number"
+              id="bidAmount"
+              value={bidAmount}
+              onChange={(e) => setBidAmount(e.target.value)}
+              className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500"
+              placeholder="Enter your bid amount"
+              step="0.01"
+              min="0"
+            />
+          </div>
+          <button
+            type="submit"
+            className="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 transition-colors"
+          >
+            Place Bid
+          </button>
+        </form>
+      )}
 
       <div>
         <h3 className="text-lg font-medium mb-2 text-gray-800">Bid History</h3>

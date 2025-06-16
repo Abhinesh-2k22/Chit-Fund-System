@@ -568,6 +568,40 @@ const resolvers = {
         console.error('Error fetching bid history:', error);
         throw new Error('Failed to fetch bid history');
       }
+    },
+
+    isWinner: async (_, { groupId }, { user }) => {
+      if (!user) throw new Error('Not authenticated');
+      
+      try {
+        // Check if user is a participant in the group
+        const isParticipant = await isGroupParticipant(groupId, user.username);
+        if (!isParticipant) {
+          throw new Error('Not authorized to view bids for this group');
+        }
+
+        // Get all winning bids for the group
+        const [rows] = await pool.query(
+          `SELECT 
+            id, 
+            group_id as groupId,
+            bid_amount as bidAmount, 
+            username, 
+            DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') as createdAt,
+            is_winner as isWinner,
+            current_month as currentmonth
+          FROM bids 
+          WHERE group_id = ? 
+          AND is_winner = 1
+          ORDER BY current_month ASC`,
+          [groupId]
+        );
+
+        return rows;
+      } catch (error) {
+        console.error('Error fetching winning bids:', error);
+        throw new Error('Failed to fetch winning bids');
+      }
     }
   },
 
@@ -954,14 +988,28 @@ const resolvers = {
       if (!user) throw new Error('Not authenticated');
 
       try {
+        // First check if the group exists
         const group = await Group.findById(groupId);
         if (!group) throw new Error('Group not found');
+
+        // Check if there is actually a pending invite
+        const pendingInvites = await getPendingGroupInvites(user.username);
+        const hasPendingInvite = pendingInvites.some(invite => invite.groupId === groupId);
+        if (!hasPendingInvite) {
+          throw new Error('No pending invitation found for this group');
+        }
 
         // Reject invitation in Neo4j
         await rejectGroupInvite(groupId, user.username);
         return true;
       } catch (error) {
-        throw new Error(error.message);
+        console.error('Error rejecting group invite:', error);
+        // Return false instead of throwing error for user-friendly handling
+        if (error.message.includes('No invitation found') || 
+            error.message.includes('No pending invitation')) {
+          return false;
+        }
+        throw error;
       }
     },
 
@@ -1096,6 +1144,16 @@ const resolvers = {
         const group = await Group.findById(groupId);
         if (!group) {
           throw new Error('Group not found');
+        }
+
+        // Check if user is already a winner
+        const [winningBids] = await pool.query(
+          'SELECT username FROM bids WHERE group_id = ? AND is_winner = 1 AND username = ?',
+          [groupId, user.username]
+        );
+
+        if (winningBids.length > 0) {
+          throw new Error('You have already won a bid in this group and cannot place more bids');
         }
 
         // Get the current lowest bid for the current month

@@ -66,6 +66,7 @@ const typeDefs = gql`
     # Bidding queries
     getCurrentBid(groupId: ID!): Bid
     getBidHistory(groupId: ID!): [Bid!]!
+    isWinner(groupId: ID!): [Bid]
   }
 
   type Mutation {
@@ -161,7 +162,7 @@ const typeDefs = gql`
     bidAmount: Float!
     createdAt: String!
     isWinner: Boolean!
-    currentmonth: Int
+    currentmonth: Int!
   }
 `;
 

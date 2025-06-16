@@ -403,12 +403,16 @@ export const rejectGroupInvite = async (groupId, username) => {
   try {
     const result = await session.run(
       `MATCH (u:User {username: $username})-[r:INVITED_TO]->(g:Group {id: $groupId})
-       DELETE r`,
+       DELETE r
+       RETURN count(r) as deletedCount`,
       { groupId, username }
     );
-    if (result.summary.counters.updates().nodesDeleted === 0) {
+    
+    const deletedCount = result.records[0].get('deletedCount').toNumber();
+    if (deletedCount === 0) {
       throw new Error('No invitation found to reject');
     }
+    
     console.log(`Rejected group invite for ${username} to group ${groupId}`);
   } catch (error) {
     console.error('Error rejecting group invite:', error);
