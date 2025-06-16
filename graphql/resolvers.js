@@ -350,7 +350,7 @@ const resolvers = {
         status: group.status,
         shuffleDate: group.shuffleDate ? group.shuffleDate.toISOString() : null,
         createdAt: group.createdAt.toISOString(),
-        currentMonth: group.currentMonth,
+        currentmonth: group.currentmonth,
         owner: {
           id: owner._id.toString(),
           username: owner.username,
@@ -491,6 +491,12 @@ const resolvers = {
           throw new Error('Not authorized to view bids for this group');
         }
 
+        // Get the group details to check pool amount and current month
+        const group = await Group.findById(groupId);
+        if (!group) {
+          throw new Error('Group not found');
+        }
+
         // Get the lowest bid for the group
         const [rows] = await pool.query(
           `SELECT 
@@ -507,7 +513,15 @@ const resolvers = {
           [groupId]
         );
 
-        return rows[0] || null;
+        // If there's a bid, add the current month from the group
+        if (rows[0]) {
+          return {
+            ...rows[0],
+            currentmonth: group.currentmonth
+          };
+        }
+
+        return null;
       } catch (error) {
         console.error('Error fetching current bid:', error);
         throw new Error('Failed to fetch current bid');
@@ -538,7 +552,8 @@ const resolvers = {
             bid_amount as bidAmount, 
             username, 
             DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') as createdAt,
-            is_winner as isWinner 
+            is_winner as isWinner,
+            current_month as currentmonth
           FROM bids 
           WHERE group_id = ? 
           AND bid_amount < ?
@@ -1081,28 +1096,22 @@ const resolvers = {
           throw new Error('Group not found');
         }
 
-        // Get the current lowest bid
-        const [currentBid] = await pool.query(
+        // Get the current lowest bid using getCurrentBid logic
+        const [currentBidRows] = await pool.query(
           'SELECT bid_amount FROM bids WHERE group_id = ? ORDER BY bid_amount ASC LIMIT 1',
           [groupId]
         );
-
-        // If there's no current bid, use the pool amount as the limit
-        const currentLowestBid = currentBid ? currentBid.bid_amount : group.totalPoolAmount;
+        const currentLowestBid = currentBidRows.length > 0 ? currentBidRows[0].bid_amount : group.totalPoolAmount;
 
         // Validate bid amount
         if (bidAmount <= 0) {
           throw new Error('Bid amount must be greater than 0');
         }
-
-        // Strict validation for bid amount
         if (bidAmount >= currentLowestBid) {
-          throw new Error(`Your bid must be lower than ₹${currentLowestBid.toLocaleString()}`);
+          throw new Error(`Your bid must be lower than the current lowest bid (₹${currentLowestBid})`);
         }
-
-        // Double check against pool amount
         if (bidAmount >= group.totalPoolAmount) {
-          throw new Error(`Your bid must be lower than the pool amount of ₹${group.totalPoolAmount.toLocaleString()}`);
+          throw new Error(`Your bid must be lower than the pool amount of ₹${group.totalPoolAmount}`);
         }
 
         // Start a transaction to ensure data consistency
@@ -1112,13 +1121,13 @@ const resolvers = {
         try {
           // Insert the new bid
           const [result] = await connection.query(
-            'INSERT INTO bids (group_id, username, bid_amount) VALUES (?, ?, ?)',
-            [groupId, user.username, bidAmount]
+            'INSERT INTO bids (group_id, username, bid_amount, current_month) VALUES (?, ?, ?, ?)',
+            [groupId, user.username, bidAmount, group.currentmonth]
           );
 
           // Get the inserted bid
           const [newBid] = await connection.query(
-            'SELECT id, bid_amount as bidAmount, username, DATE_FORMAT(created_at, "%Y-%m-%d %H:%i:%s") as createdAt FROM bids WHERE id = ?',
+            'SELECT id, bid_amount as bidAmount, username, DATE_FORMAT(created_at, "%Y-%m-%d %H:%i:%s") as createdAt, current_month as currentmonth FROM bids WHERE id = ?',
             [result.insertId]
           );
 

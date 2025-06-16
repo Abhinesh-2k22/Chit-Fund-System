@@ -38,6 +38,7 @@ const GET_BID_HISTORY = gql`
       username
       createdAt
       isWinner
+      currentmonth
     }
   }
 `;
@@ -307,36 +308,43 @@ const Bidding = ({ groupId }) => {
           <p>Loading...</p>
         ) : bidHistoryData?.getBidHistory?.length > 0 ? (
           <div className="space-y-2">
-            {bidHistoryData.getBidHistory.map((bid) => (
-              <div
-                key={bid.id}
-                className={`p-3 rounded ${
-                  bid.isWinner ? 'bg-green-100' : 'bg-gray-50'
-                }`}
-              >
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center space-x-4">
-                    <div className="flex-shrink-0">
-                      <p className="text-xl font-semibold text-gray-900">
-                        ₹{bid.bidAmount.toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="flex items-center text-sm text-gray-600">
-                      <span className="font-medium text-gray-700">{bid.username}</span>
-                      <span className="mx-2">•</span>
-                      <span>{new Date(bid.createdAt).toLocaleString('en-IN', {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        hour12: true
-                      })}</span>
+            {bidHistoryData.getBidHistory
+              .filter(bid => bid.currentmonth === groupData?.groupDetails?.currentmonth)
+              .map((bid) => (
+                <div
+                  key={bid.id}
+                  className={`p-3 rounded ${
+                    bid.isWinner ? 'bg-green-100' : 'bg-gray-50'
+                  }`}
+                >
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center space-x-4">
+                      <div className="flex-shrink-0">
+                        <p className="text-xl font-semibold text-gray-900">
+                          ₹{bid.bidAmount.toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="flex items-center text-sm text-gray-600">
+                        <span className="font-medium text-gray-700">{bid.username}</span>
+                        <span className="mx-2">•</span>
+                        <span>{new Date(bid.createdAt).toLocaleString('en-IN', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          hour12: true
+                        })}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            {bidHistoryData.getBidHistory.filter(bid => 
+              bid.currentmonth === groupData?.groupDetails?.currentmonth
+            ).length === 0 && (
+              <p className="text-gray-600">No bids for the current month</p>
+            )}
           </div>
         ) : (
           <p className="text-gray-600">No bids yet</p>

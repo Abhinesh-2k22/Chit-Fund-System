@@ -161,6 +161,7 @@ const typeDefs = gql`
     bidAmount: Float!
     createdAt: String!
     isWinner: Boolean!
+    currentmonth: Int
   }
 `;
 
