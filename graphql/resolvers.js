@@ -16,10 +16,8 @@ import {
   removeGroupParticipant,
   getUserGroups,
   getGroupParticipants,
-  getGroupWinners,
   isGroupOwner,
   isGroupParticipant,
-  recordWinner,
   createGroupInvite,
   getPendingGroupInvites,
   acceptGroupInvite,
@@ -298,7 +296,7 @@ const resolvers = {
               status: group.status || 'pending',
               shuffleDate: group.shuffleDate ? group.shuffleDate.toISOString() : null,
               createdAt: group.createdAt ? group.createdAt.toISOString() : new Date().toISOString(),
-              currentMonth: group.currentMonth || 0,
+              currentmonth: group.currentmonth || 0,
               owner: {
                 id: owner._id.toString(),
                 username: owner.username,
@@ -372,7 +370,7 @@ const resolvers = {
 
       // Format dates and ensure correct types
       return participants.map(p => {
-        let joinedAtISO = null;
+        let joinedAtISO = new Date().toISOString(); // Default to current date if null
         if (p.joinedAt) {
           try {
             if (typeof p.joinedAt === 'object' && p.joinedAt.year) {
@@ -390,7 +388,7 @@ const resolvers = {
             }
           } catch (error) {
             console.error('Error converting joinedAt date:', error);
-            joinedAtISO = null;
+            // Keep the default current date if conversion fails
           }
         }
 
@@ -424,15 +422,6 @@ const resolvers = {
           wonAt: wonAtISO,
         };
       });
-    },
-
-    groupWinners: async (_, { groupId }, { user }) => {
-      if (!user) throw new Error('Not authenticated');
-      
-      const isParticipant = await isGroupParticipant(groupId, user.username);
-      if (!isParticipant) throw new Error('Not authorized to view this group');
-      
-      return getGroupWinners(groupId);
     },
 
     getTransactions: async (_, __, { user }) => {
@@ -974,32 +963,22 @@ const resolvers = {
         const canStart = await group.canStart();
         if (!canStart) throw new Error('Cannot start group: insufficient participants');
 
+        // Calculate shuffle date (30 days from now)
+        const shuffleDate = new Date();
+        shuffleDate.setDate(shuffleDate.getDate() + 30);
+
+        // Update group fields
         group.status = 'started';
-        group.shuffleDate = new Date();
-        await group.save();
+        group.shuffleDate = shuffleDate;
+        group.currentmonth = 1; // Using the correct field name from schema
+        
+        // Save the updated group
+        const updatedGroup = await group.save();
+        console.log('Group started with currentmonth:', updatedGroup.currentmonth); // Add logging to verify
 
         return true;
       } catch (error) {
-        throw new Error(error.message);
-      }
-    },
-
-    recordWinner: async (_, { groupId, username, month, amount }, { user }) => {
-      if (!user) throw new Error('Not authenticated');
-
-      try {
-        const isOwner = await isGroupOwner(groupId, user.username);
-        if (!isOwner) throw new Error('Only group owner can record winners');
-
-        const group = await Group.findById(groupId);
-        if (!group) throw new Error('Group not found');
-        if (group.status !== 'started') throw new Error('Group is not started');
-
-        // Record winner in Neo4j
-        await recordWinner(groupId, username, month, amount);
-
-        return true;
-      } catch (error) {
+        console.error('Error starting group:', error); // Add error logging
         throw new Error(error.message);
       }
     },
@@ -1154,48 +1133,6 @@ const resolvers = {
       } catch (error) {
         console.error('Error placing bid:', error);
         throw new Error(error.message || 'Failed to place bid');
-      }
-    },
-
-    selectWinner: async (_, { groupId, bidId }, { user }) => {
-      if (!user) throw new Error('Not authenticated');
-      
-      try {
-        // Check if user is the group owner
-        const isOwner = await isGroupOwner(user.username, groupId);
-        if (!isOwner) {
-          throw new Error('Only the group owner can select a winner');
-        }
-
-        // Get the group status
-        const group = await Group.findById(groupId);
-        if (!group) {
-          throw new Error('Group not found');
-        }
-
-        if (group.status !== 'BIDDING') {
-          throw new Error('Can only select a winner during the bidding phase');
-        }
-
-        // Update the bid as winner
-        await pool.query(
-          'UPDATE bids SET is_winner = TRUE WHERE id = ? AND group_id = ?',
-          [bidId, groupId]
-        );
-
-        // Get the updated bid
-        const [winnerBid] = await pool.query(
-          'SELECT id, bid_amount as bidAmount, username, created_at as createdAt, is_winner as isWinner FROM bids WHERE id = ?',
-          [bidId]
-        );
-
-        // Record the winner in Neo4j
-        await recordWinner(groupId, winnerBid[0].username);
-
-        return winnerBid[0];
-      } catch (error) {
-        console.error('Error selecting winner:', error);
-        throw new Error(error.message || 'Failed to select winner');
       }
     }
   }

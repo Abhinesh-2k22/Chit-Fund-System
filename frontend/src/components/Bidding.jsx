@@ -2,6 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { useMutation, useQuery, gql } from '@apollo/client';
 import { io } from 'socket.io-client';
 
+const GET_GROUP_DETAILS = gql`
+  query GetGroupDetails($groupId: ID!) {
+    groupDetails(groupId: $groupId) {
+      id
+      name
+      totalPoolAmount
+      totalMonths
+      status
+      shuffleDate
+      currentmonth
+      owner {
+        username
+      }
+    }
+  }
+`;
+
 const GET_CURRENT_BID = gql`
   query GetCurrentBid($groupId: ID!) {
     getCurrentBid(groupId: $groupId) {
@@ -48,31 +65,32 @@ const SELECT_WINNER = gql`
   }
 `;
 
-const Bidding = ({ groupId, shuffleDate, status, isOwner }) => {
+const Bidding = ({ groupId }) => {
   const [bidAmount, setBidAmount] = useState('');
   const [error, setError] = useState('');
   const [socket, setSocket] = useState(null);
   const [timeLeft, setTimeLeft] = useState(null);
 
-  // Get group details to show initial pool amount
-  const { data: groupData } = useQuery(gql`
-    query GetGroupDetails($groupId: ID!) {
-      groupDetails(groupId: $groupId) {
-        totalPoolAmount
-      }
-    }
-  `, {
+  const { data: groupData, loading: groupLoading } = useQuery(GET_GROUP_DETAILS, {
     variables: { groupId },
-    skip: status !== 'started'
+    pollInterval: 2000,
+    fetchPolicy: 'network-only'
   });
 
   // Calculate time left until shuffle date
   useEffect(() => {
-    if (shuffleDate) {
+    console.log('Group Data:', groupData?.groupDetails);
+    console.log('Shuffle Date:', groupData?.groupDetails?.shuffleDate);
+    
+    if (groupData?.groupDetails?.shuffleDate) {
       const calculateTimeLeft = () => {
         const now = new Date().getTime();
-        const shuffleTime = new Date(shuffleDate).getTime();
+        const shuffleTime = new Date(groupData.groupDetails.shuffleDate).getTime();
         const difference = shuffleTime - now;
+
+        console.log('Time difference:', difference);
+        console.log('Current time:', new Date(now));
+        console.log('Shuffle time:', new Date(shuffleTime));
 
         if (difference <= 0) {
           setTimeLeft(null);
@@ -84,6 +102,7 @@ const Bidding = ({ groupId, shuffleDate, status, isOwner }) => {
         const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
         const seconds = Math.floor((difference % (1000 * 60)) / 1000);
 
+        console.log('Time left:', { days, hours, minutes, seconds });
         setTimeLeft({ days, hours, minutes, seconds });
       };
 
@@ -92,7 +111,7 @@ const Bidding = ({ groupId, shuffleDate, status, isOwner }) => {
 
       return () => clearInterval(timer);
     }
-  }, [shuffleDate]);
+  }, [groupData?.groupDetails?.shuffleDate]);
 
   // Initialize Socket.IO connection
   useEffect(() => {
@@ -124,14 +143,14 @@ const Bidding = ({ groupId, shuffleDate, status, isOwner }) => {
 
   const { data: currentBidData, loading: currentBidLoading, refetch: refetchCurrentBid } = useQuery(GET_CURRENT_BID, {
     variables: { groupId },
-    skip: status !== 'started',
+    skip: groupData?.groupDetails?.status !== 'started',
     pollInterval: 2000,
     fetchPolicy: 'network-only'
   });
 
   const { data: bidHistoryData, loading: bidHistoryLoading, refetch: refetchBidHistory } = useQuery(GET_BID_HISTORY, {
     variables: { groupId },
-    skip: status !== 'started',
+    skip: groupData?.groupDetails?.status !== 'started',
     pollInterval: 2000,
     fetchPolicy: 'network-only'
   });
@@ -183,20 +202,15 @@ const Bidding = ({ groupId, shuffleDate, status, isOwner }) => {
     }
   };
 
-  const handleSelectWinner = async (bidId) => {
-    try {
-      await selectWinner({
-        variables: {
-          groupId,
-          bidId
-        }
-      });
-    } catch (err) {
-      setError(err.message);
+  if (groupLoading) {
+    return (
+      <div className="p-4 bg-white rounded-lg shadow">
+        <p className="text-gray-600">Loading group details...</p>
+      </div>
+    );
     }
-  };
 
-  if (status !== 'started') {
+  if (groupData?.groupDetails?.status !== 'started') {
     return (
       <div className="p-4 bg-white rounded-lg shadow">
         <p className="text-gray-600">Bidding has not started yet.</p>
@@ -206,7 +220,7 @@ const Bidding = ({ groupId, shuffleDate, status, isOwner }) => {
 
   return (
     <div className="p-4 bg-white rounded-lg shadow">
-      <h2 className="text-xl font-semibold mb-4">Bidding</h2>
+      <h2 className="text-xl font-semibold mb-4 text-black">Bidding</h2>
       
       {timeLeft && (
         <div className="mb-6 p-4 bg-blue-50 rounded-lg">
@@ -320,14 +334,6 @@ const Bidding = ({ groupId, shuffleDate, status, isOwner }) => {
                       })}</span>
                     </div>
                   </div>
-                  {isOwner && !bid.isWinner && (
-                    <button
-                      onClick={() => handleSelectWinner(bid.id)}
-                      className="px-3 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 transition-colors text-sm font-medium"
-                    >
-                      Select Winner
-                    </button>
-                  )}
                 </div>
               </div>
             ))}

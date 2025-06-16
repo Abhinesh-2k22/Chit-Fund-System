@@ -38,10 +38,18 @@ const groupSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
-  currentmonth:{
-    type:Number,
+  currentmonth: {
+    type: Number,
     default: 0
-  }
+  },
+  winners: [{
+    type: String,  // username of the winner
+    default: null
+  }],
+  winningBids: [{
+    type: Number,  // amount of the winning bid
+    default: null
+  }]
 });
 
 // Method to check if group can be started
@@ -81,19 +89,22 @@ groupSchema.methods.removeParticipant = async function(userId) {
 };
 
 // Method to add a winner
-groupSchema.methods.addWinner = async function(userId, month, amount) {
+groupSchema.methods.addWinner = async function(username, month, bidAmount) {
   if (this.status !== 'started') {
     throw new Error('Cannot add winners to a non-started group');
   }
-  if (!this.participants.includes(userId)) {
-    throw new Error('Winner must be a participant in the group');
+  if (month < 0 || month >= this.totalMonths) {
+    throw new Error('Invalid month');
   }
-  this.winners.push({
-    winner: userId,
-    month,
-    amount,
-    date: new Date()
-  });
+  
+  // Initialize arrays if they don't exist
+  if (!this.winners) this.winners = new Array(this.totalMonths).fill(null);
+  if (!this.winningBids) this.winningBids = new Array(this.totalMonths).fill(null);
+  
+  // Set winner and winning bid for the month
+  this.winners[month] = username;
+  this.winningBids[month] = bidAmount;
+  
   return this.save();
 };
 
@@ -101,8 +112,7 @@ groupSchema.methods.addWinner = async function(userId, month, amount) {
 groupSchema.statics.findByParticipant = function(userId) {
   return this.find({ participants: userId })
     .populate('owner', 'username email mobile')
-    .populate('participants', 'username email mobile')
-    .populate('winners.winner', 'username email mobile');
+    .populate('participants', 'username email mobile');
 };
 
 const Group = mongoose.model('Group', groupSchema);

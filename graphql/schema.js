@@ -21,7 +21,7 @@ const typeDefs = gql`
     shuffleDate: String
     status: String!
     createdAt: String!
-    currentMonth: Int
+    currentmonth: Int
     # User-specific group information
     role: String!
     joinedAt: String!
@@ -42,13 +42,6 @@ const typeDefs = gql`
     wonAt: String
   }
 
-  type GroupWinner {
-    username: String!
-    month: Int!
-    amount: Float!
-    wonAt: String!
-  }
-
   type AuthPayload {
     token: String!
     user: User!
@@ -67,7 +60,6 @@ const typeDefs = gql`
     myGroups(username: String!): [Group!]!
     groupDetails(groupId: ID!): Group
     groupParticipants(groupId: ID!): [GroupParticipant!]!
-    groupWinners(groupId: ID!): [GroupWinner!]!
     getGroupOutgoingInvites(groupId: ID!): [String!]!
     groupPendingInvites(groupId: ID!): [String!]!
     
@@ -127,13 +119,6 @@ const typeDefs = gql`
       groupId: ID!
     ): Boolean!
 
-    recordWinner(
-      groupId: ID!
-      username: String!
-      month: Int!
-      amount: Float!
-    ): Boolean!
-
     leaveGroup(
       groupId: ID!
     ): Boolean!
@@ -146,11 +131,6 @@ const typeDefs = gql`
       groupId: ID!
       bidAmount: Float!
     ): Bid!
-
-    selectWinner(
-      groupId: ID!
-      bidId: ID!
-    ): Boolean!
   }
 
   type GroupInvite {

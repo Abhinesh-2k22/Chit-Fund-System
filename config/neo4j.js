@@ -133,12 +133,11 @@ export const getGroupParticipants = async (groupId) => {
   const session = driver.session();
   try {
     const result = await session.run(
-      `MATCH (u:User)-[r:PARTICIPATES_IN]->(g:Group {id: $groupId})
-       RETURN u.username as username,
-              r.joinedAt as joinedAt,
-              r.wonMonth as wonMonth,
-              r.wonAmount as wonAmount,
-              r.wonAt as wonAt`,
+      `
+      MATCH (g:Group {id: $groupId})<-[:PARTICIPATES_IN]-(u:User)
+      RETURN u.username as username, u.joinedAt as joinedAt, u.wonMonth as wonMonth, u.wonAmount as wonAmount, u.wonAt as wonAt
+      ORDER BY u.joinedAt
+      `,
       { groupId }
     );
     return result.records.map(record => ({
@@ -148,9 +147,6 @@ export const getGroupParticipants = async (groupId) => {
       wonAmount: record.get('wonAmount'),
       wonAt: record.get('wonAt')
     }));
-  } catch (error) {
-    console.error('Error getting group participants:', error);
-    throw error;
   } finally {
     await session.close();
   }
@@ -317,54 +313,6 @@ export const removeConnection = async (fromUsername, toUsername) => {
     console.log(`Removed connection between ${fromUsername} and ${toUsername}`);
   } catch (error) {
     console.error('Error removing connection:', error);
-    throw error;
-  } finally {
-    await session.close();
-  }
-};
-
-// Record a winner for a specific month
-export const recordWinner = async (groupId, username, month, amount) => {
-  const session = driver.session();
-  try {
-    await session.run(
-      `MATCH (u:User {username: $username})-[r:PARTICIPATES_IN]->(g:Group {id: $groupId})
-       SET r.wonMonth = $month,
-           r.wonAmount = $amount,
-           r.wonAt = datetime()`,
-      { groupId, username, month, amount }
-    );
-    console.log(`Recorded winner ${username} for month ${month} in group ${groupId}`);
-  } catch (error) {
-    console.error('Error recording winner:', error);
-    throw error;
-  } finally {
-    await session.close();
-  }
-};
-
-// Get winners for a group
-export const getGroupWinners = async (groupId) => {
-  const session = driver.session();
-  try {
-    const result = await session.run(
-      `MATCH (u:User)-[r:PARTICIPATES_IN]->(g:Group {id: $groupId})
-       WHERE r.wonMonth IS NOT NULL
-       RETURN u.username as username, 
-              r.wonMonth as month, 
-              r.wonAmount as amount, 
-              r.wonAt as wonAt
-       ORDER BY r.wonMonth`,
-      { groupId }
-    );
-    return result.records.map(record => ({
-      username: record.get('username'),
-      month: record.get('month'),
-      amount: record.get('amount'),
-      wonAt: record.get('wonAt')
-    }));
-  } catch (error) {
-    console.error('Error getting group winners:', error);
     throw error;
   } finally {
     await session.close();

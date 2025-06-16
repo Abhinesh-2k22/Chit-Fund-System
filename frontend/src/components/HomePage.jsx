@@ -15,7 +15,7 @@ const GET_MY_GROUPS = gql`
       status
       shuffleDate
       createdAt
-      currentMonth
+      currentmonth
       owner {
         id
         username
@@ -208,12 +208,12 @@ const HomePage = () => {
                   <div className="mt-4">
                     <div className="flex justify-between text-sm text-gray-600 mb-1">
                       <span>Progress</span>
-                      <span>{group.currentMonth}/{group.totalMonths} months</span>
+                      <span>{group.currentmonth}/{group.totalMonths} months</span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2">
                       <div 
                         className="bg-indigo-600 h-2 rounded-full" 
-                        style={{ width: `${(group.currentMonth / group.totalMonths) * 100}%` }}
+                        style={{ width: `${(group.currentmonth / group.totalMonths) * 100}%` }}
                       ></div>
                     </div>
                   </div>
