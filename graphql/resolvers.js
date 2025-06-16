@@ -497,7 +497,7 @@ const resolvers = {
           throw new Error('Group not found');
         }
 
-        // Get the lowest bid for the group
+        // Get the lowest bid for the current month
         const [rows] = await pool.query(
           `SELECT 
             id, 
@@ -505,12 +505,14 @@ const resolvers = {
             bid_amount as bidAmount, 
             username, 
             created_at as createdAt,
-            is_winner as isWinner 
+            is_winner as isWinner,
+            current_month as currentmonth
           FROM bids 
           WHERE group_id = ? 
+          AND current_month = ?
           ORDER BY bid_amount ASC 
           LIMIT 1`,
-          [groupId]
+          [groupId, group.currentmonth]
         );
 
         // If there's a bid, add the current month from the group
@@ -1096,11 +1098,13 @@ const resolvers = {
           throw new Error('Group not found');
         }
 
-        // Get the current lowest bid using getCurrentBid logic
+        // Get the current lowest bid for the current month
         const [currentBidRows] = await pool.query(
-          'SELECT bid_amount FROM bids WHERE group_id = ? ORDER BY bid_amount ASC LIMIT 1',
-          [groupId]
+          'SELECT bid_amount FROM bids WHERE group_id = ? AND current_month = ? ORDER BY bid_amount ASC LIMIT 1',
+          [groupId, group.currentmonth]
         );
+        
+        // If there's no current bid for this month, use the pool amount as the limit
         const currentLowestBid = currentBidRows.length > 0 ? currentBidRows[0].bid_amount : group.totalPoolAmount;
 
         // Validate bid amount
@@ -1119,7 +1123,7 @@ const resolvers = {
         await connection.beginTransaction();
 
         try {
-          // Insert the new bid
+          // Insert the new bid with current month
           const [result] = await connection.query(
             'INSERT INTO bids (group_id, username, bid_amount, current_month) VALUES (?, ?, ?, ?)',
             [groupId, user.username, bidAmount, group.currentmonth]
