@@ -133,6 +133,10 @@ const typeDefs = gql`
       groupId: ID!
       bidAmount: Float!
     ): Bid!
+
+    selectWinner(
+      groupId: ID!
+    ): Boolean!
   }
 
   type GroupInvite {

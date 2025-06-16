@@ -42,14 +42,6 @@ const groupSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
-  winners: [{
-    type: String,  // username of the winner
-    default: null
-  }],
-  winningBids: [{
-    type: Number,  // amount of the winning bid
-    default: null
-  }]
 });
 
 // Method to check if group can be started

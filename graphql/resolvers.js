@@ -1205,6 +1205,109 @@ const resolvers = {
         console.error('Error placing bid:', error);
         throw new Error(error.message || 'Failed to place bid');
       }
+    },
+
+    selectWinner: async (_, { groupId }, { user }) => {
+      if (!user) throw new Error('Not authenticated');
+      
+      try {
+        console.log('Starting selectWinner mutation for group:', groupId);
+        
+        // Check if user is a participant in the group
+        const isParticipant = await isGroupParticipant(groupId, user.username);
+        if (!isParticipant) {
+          throw new Error('Not authorized to select winner for this group');
+        }
+
+        // Get the group details
+        const group = await Group.findById(groupId);
+        if (!group) {
+          throw new Error('Group not found');
+        }
+
+        console.log('Current group state:', {
+          status: group.status,
+          currentmonth: group.currentmonth,
+          totalMonths: group.totalMonths,
+          shuffleDate: group.shuffleDate
+        });
+
+        // Check if group is in started status
+        if (group.status !== 'started') {
+          throw new Error('Group is not in started status');
+        }
+
+        // Check if current month is less than or equal to total months
+        if (group.currentmonth >= group.totalMonths) {
+          console.log('Group has reached its end, marking as completed');
+          group.status = 'completed';
+          await group.save();
+          return true;
+        }
+
+        // Get the current lowest bid using existing query
+        const currentBid = await resolvers.Query.getCurrentBid(null, { groupId }, { user });
+        console.log('Current lowest bid:', currentBid);
+
+        // Start a transaction
+        const connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        try {
+          // If there's a current bid, update it as winner
+          if (currentBid) {
+            console.log('Updating winning bid for bid ID:', currentBid.id);
+            const [updateResult] = await connection.query(
+              'UPDATE bids SET is_winner = 1 WHERE id = ?',
+              [currentBid.id]
+            );
+            console.log('Bid update result:', updateResult);
+          }
+
+          // Increment current month
+          const oldMonth = group.currentmonth;
+          group.currentmonth += 1;
+          console.log('Incrementing month from', oldMonth, 'to', group.currentmonth);
+
+          // If we haven't reached the end, update shuffle date
+          if (group.currentmonth <= group.totalMonths) {
+            // Calculate new shuffle date (30 days from now)
+            const oldShuffleDate = group.shuffleDate;
+            const newShuffleDate = new Date();
+            newShuffleDate.setDate(newShuffleDate.getDate() + 30);
+            group.shuffleDate = newShuffleDate;
+            console.log('Updating shuffle date from', oldShuffleDate, 'to', newShuffleDate);
+          } else {
+            // If we've reached the end, mark group as completed
+            console.log('Group has reached its end, marking as completed');
+            group.status = 'completed';
+          }
+
+          // Save group updates
+          console.log('Saving group updates...');
+          const savedGroup = await group.save();
+          console.log('Group saved successfully:', {
+            currentmonth: savedGroup.currentmonth,
+            shuffleDate: savedGroup.shuffleDate,
+            status: savedGroup.status
+          });
+
+          // Commit transaction
+          await connection.commit();
+          console.log('Transaction committed successfully');
+          return true;
+        } catch (error) {
+          // Rollback in case of error
+          console.error('Error in transaction, rolling back:', error);
+          await connection.rollback();
+          throw error;
+        } finally {
+          connection.release();
+        }
+      } catch (error) {
+        console.error('Error in selectWinner mutation:', error);
+        throw new Error(error.message || 'Failed to select winner');
+      }
     }
   }
 };
