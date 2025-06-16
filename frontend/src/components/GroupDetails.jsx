@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, gql, useLazyQuery } from '@apollo/client';
-import { FaUsers, FaMoneyBillWave, FaGavel, FaChevronLeft, FaEdit, FaPlus, FaSearch, FaUserPlus } from 'react-icons/fa';
+import { FaUsers, FaMoneyBillWave, FaGavel, FaChevronLeft, FaEdit, FaPlus, FaSearch, FaUserPlus, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 import Navbar from './Navbar';
 import { useAuth } from '../context/AuthContext';
 import debounce from 'lodash/debounce';
@@ -104,6 +104,19 @@ const START_GROUP = gql`
   }
 `;
 
+const GET_ALL_BID_DETAILS = gql`
+  query GetAllBidDetails($groupId: ID!) {
+    getAllBidDetails(groupId: $groupId) {
+      id
+      bidAmount
+      username
+      createdAt
+      isWinner
+      currentmonth
+    }
+  }
+`;
+
 const GroupDetails = () => {
   const { groupId, groupName } = useParams();
   const navigate = useNavigate();
@@ -117,19 +130,28 @@ const GroupDetails = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [invitingUsers, setInvitingUsers] = useState(new Set());
   const [groupPendingInvitations, setGroupPendingInvitations] = useState(new Set());
+  const [expandedMonths, setExpandedMonths] = useState([]);
 
-  const { loading, error, data, refetch } = useQuery(GET_GROUP_DETAILS, {
+  const { data: groupData, loading: groupLoading, error: groupError } = useQuery(GET_GROUP_DETAILS, {
     variables: { groupId },
-    fetchPolicy: 'network-only',
+    pollInterval: 2000,
+    fetchPolicy: 'network-only'
   });
 
   const { data: connectionsData, loading: connectionsLoading, refetch: connectionsRefetch } = useQuery(GET_CONNECTIONS, {
     skip: !user,
   });
 
-  const { data: groupPendingInvitesData, loading: groupPendingInvitesLoading } = useQuery(GET_GROUP_PENDING_INVITES, {
+  const { data: groupPendingInvitesData, loading: groupPendingInvitesLoading, error: groupPendingInvitesError } = useQuery(GET_GROUP_PENDING_INVITES, {
     variables: { groupId },
-    skip: !user || !data?.groupDetails,
+    skip: !user || !groupData?.groupDetails,
+  });
+
+  const { data: allBidDetailsData, loading: allBidDetailsLoading, error: allBidDetailsError } = useQuery(GET_ALL_BID_DETAILS, {
+    variables: { groupId },
+    skip: groupData?.groupDetails?.status !== 'started',
+    pollInterval: 2000,
+    fetchPolicy: 'network-only'
   });
 
   const [updateGroupMutation] = useMutation(UPDATE_GROUP_DETAILS, {
@@ -208,12 +230,12 @@ const GroupDetails = () => {
   });
 
   useEffect(() => {
-    if (data?.groupDetails) {
-      setEditName(data.groupDetails.name);
-      setEditPoolAmount(data.groupDetails.totalPoolAmount);
-      setEditTotalMonths(data.groupDetails.totalMonths);
+    if (groupData?.groupDetails) {
+      setEditName(groupData.groupDetails.name);
+      setEditPoolAmount(groupData.groupDetails.totalPoolAmount);
+      setEditTotalMonths(groupData.groupDetails.totalMonths);
     }
-  }, [data]);
+  }, [groupData]);
 
   useEffect(() => {
     if (searchQuery.trim()) {
@@ -232,8 +254,8 @@ const GroupDetails = () => {
     }
   }, [groupPendingInvitesData]);
 
-  const group = data?.groupDetails;
-  const participants = data?.groupParticipants || [];
+  const group = groupData?.groupDetails;
+  const participants = groupData?.groupParticipants || [];
   const isOwner = user?.username === group?.owner?.username;
   const isWaiting = group?.status === 'waiting';
   const connections = connectionsData?.connections || [];
@@ -292,38 +314,41 @@ const GroupDetails = () => {
     }
   };
 
+  const toggleMonth = (month) => {
+    setExpandedMonths((prev) =>
+      prev.includes(month)
+        ? prev.filter((m) => m !== month)
+        : [...prev, month]
+    );
+  };
+
   const sidebarItems = [
     { id: 'details', label: 'Group Details', icon: <FaUsers /> },
-    { id: 'payment', label: 'Payment', icon: <FaMoneyBillWave /> },
+    { id: 'pastevents', label: 'Past Events', icon: <FaMoneyBillWave /> },
     { id: 'bid', label: 'Bid', icon: <FaGavel /> }
   ];
 
-  if (loading || groupPendingInvitesLoading) return (
+  if (groupLoading || groupPendingInvitesLoading) return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      <div className="pt-20 px-4">
-        <div className="max-w-7xl mx-auto text-center py-8">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading group details and invitations...</p>
+      <div className="container mx-auto px-4 py-8">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
+          <div className="h-64 bg-gray-200 rounded"></div>
         </div>
       </div>
     </div>
   );
 
-  if (error) {
-    console.error('Error loading group:', error);
+  if (groupError || groupPendingInvitesError || allBidDetailsError) {
     return (
       <div className="min-h-screen bg-gray-50">
         <Navbar />
-        <div className="pt-20 px-4">
-          <div className="max-w-7xl mx-auto text-center py-8">
-            <p className="text-red-600">Error loading group details. Please try refreshing.</p>
-            <button
-              onClick={() => refetch()} 
-              className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
-            >
-              Retry
-            </button>
+        <div className="container mx-auto px-4 py-8">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <p className="text-red-600">
+              {groupError?.message || groupPendingInvitesError?.message || allBidDetailsError?.message || 'An error occurred'}
+            </p>
           </div>
         </div>
       </div>
@@ -590,19 +615,93 @@ const GroupDetails = () => {
                   </div>
                 )}
 
-                {activeTab === 'payment' && (
+                {activeTab === 'pastevents' && (
                   <div>
-                    <h2 className="text-xl font-semibold text-gray-800 mb-4">Payment History</h2>
-                    {/* Add your payment content here */}
+                    <h2 className="text-xl font-semibold text-gray-800 mb-6">Past Events</h2>
+                    {allBidDetailsLoading ? (
+                      <div className="animate-pulse space-y-4">
+                        {[...Array(groupData?.groupDetails?.totalMonths)].map((_, i) => (
+                          <div key={i} className="bg-gray-100 rounded-lg p-6 h-48"></div>
+                        ))}
+                      </div>
+                    ) : allBidDetailsData?.getAllBidDetails ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {[...Array(groupData?.groupDetails?.totalMonths)].map((_, monthIndex) => {
+                          const month = monthIndex + 1;
+                          const monthBids = allBidDetailsData.getAllBidDetails.filter(
+                            bid => bid.currentmonth === month
+                          );
+                          const winningBid = monthBids.find(bid => bid.isWinner);
+                          const hasBids = monthBids.length > 0;
+
+                          return (
+                            <div key={month} className="bg-white rounded-lg shadow-md p-6 border border-gray-100">
+                              <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-lg font-semibold text-gray-800">Month {month}</h3>
+                                <div className="flex items-center space-x-2">
+                                  {winningBid && (
+                                    <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
+                                      Completed
+                                    </span>
+                                  )}
+                                  {hasBids && (
+                                    <button
+                                      className="ml-2 p-1 rounded hover:bg-gray-100 focus:outline-none"
+                                      onClick={() => toggleMonth(month)}
+                                      aria-label={expandedMonths.includes(month) ? 'Collapse' : 'Expand'}
+                                    >
+                                      {expandedMonths.includes(month) ? <FaChevronUp /> : <FaChevronDown />}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              {winningBid ? (
+                                <div className="space-y-4">
+                                  <div className="bg-green-50 rounded-lg p-4">
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-sm text-gray-600">Winner</span>
+                                      <span className="font-medium text-gray-900">{winningBid.username}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center mt-2">
+                                      <span className="text-sm text-gray-600">Winning Bid</span>
+                                      <span className="font-medium text-green-600">₹{winningBid.bidAmount.toLocaleString()}</span>
+                                    </div>
+                                  </div>
+                                  {hasBids && expandedMonths.includes(month) && (
+                                    <div className="mt-4">
+                                      <h4 className="text-sm font-medium text-gray-700 mb-2">All Bids</h4>
+                                      <div className="space-y-2">
+                                        {monthBids.map(bid => (
+                                          <div key={bid.id} className={`flex justify-between items-center text-sm ${bid.isWinner ? 'font-semibold text-green-700' : ''}`}>
+                                            <span className="text-gray-600">{bid.username}</span>
+                                            <span className="text-gray-900">₹{bid.bidAmount.toLocaleString()}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="text-center py-8">
+                                  <p className="text-gray-500">No bids for this month</p>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-gray-500">No bidding history available</p>
+                    )}
                   </div>
                 )}
 
                 {activeTab === 'bid' && (
                   <Bidding
                     groupId={groupId}
-                    shuffleDate={data?.groupDetails?.shuffleDate}
-                    status={data?.groupDetails?.status}
-                    isOwner={data?.groupDetails?.owner?.username === user?.username}
+                    shuffleDate={groupData?.groupDetails?.shuffleDate}
+                    status={groupData?.groupDetails?.status}
+                    isOwner={groupData?.groupDetails?.owner?.username === user?.username}
                   />
                 )}
               </div>

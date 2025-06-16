@@ -602,6 +602,36 @@ const resolvers = {
         console.error('Error fetching winning bids:', error);
         throw new Error('Failed to fetch winning bids');
       }
+    },
+
+    getAllBidDetails: async (_, { groupId }, { user }) => {
+      if (!user) throw new Error('Not authenticated');
+      try {
+        // Check if user is a participant in the group
+        const isParticipant = await isGroupParticipant(groupId, user.username);
+        if (!isParticipant) {
+          throw new Error('Not authorized to view bids for this group');
+        }
+        // Get all bids for the group (no filtering)
+        const [rows] = await pool.query(
+          `SELECT 
+            id, 
+            group_id as groupId,
+            bid_amount as bidAmount, 
+            username, 
+            DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') as createdAt,
+            is_winner as isWinner,
+            current_month as currentmonth
+          FROM bids 
+          WHERE group_id = ? 
+          ORDER BY current_month ASC, bid_amount ASC` ,
+          [groupId]
+        );
+        return rows;
+      } catch (error) {
+        console.error('Error fetching all bid details:', error);
+        throw new Error('Failed to fetch all bid details');
+      }
     }
   },
 
