@@ -19,9 +19,15 @@ export const initializeMySQL = async () => {
     // Create users table if not exists
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
-        username VARCHAR(255) PRIMARY KEY,
-        balance DECIMAL(10,2) DEFAULT 0
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        username VARCHAR(255) NOT NULL UNIQUE,
+        balance DECIMAL(15,2) NOT NULL DEFAULT 0
       )
+    `);
+
+    // Insert default 'bank' user if not exists
+    await pool.query(`
+      INSERT IGNORE INTO users (username, balance) VALUES ('bank', 0)
     `);
 
     // Create transfer table if not exists
@@ -45,6 +51,7 @@ export const initializeMySQL = async () => {
         group_id VARCHAR(255) NOT NULL,
         username VARCHAR(255) NOT NULL,
         bid_amount DECIMAL(10,2) NOT NULL,
+        current_month INT NOT NULL DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         is_winner BOOLEAN DEFAULT FALSE,
         FOREIGN KEY (username) REFERENCES users(username)

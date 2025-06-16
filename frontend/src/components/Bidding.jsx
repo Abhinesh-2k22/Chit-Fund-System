@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useMutation, useQuery, gql } from '@apollo/client';
 import { io } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
@@ -78,6 +78,7 @@ const Bidding = ({ groupId }) => {
   const [socket, setSocket] = useState(null);
   const [timeLeft, setTimeLeft] = useState(null);
   const { user } = useAuth();
+  const hasSelectedWinnerRef = useRef(false); // Persist flag across renders
 
   const { data: groupData, loading: groupLoading } = useQuery(GET_GROUP_DETAILS, {
     variables: { groupId },
@@ -137,7 +138,7 @@ const Bidding = ({ groupId }) => {
     console.log('Shuffle Date:', groupData?.groupDetails?.shuffleDate);
     
     if (groupData?.groupDetails?.shuffleDate) {
-      let hasSelectedWinner = false; // Flag to prevent multiple calls
+      hasSelectedWinnerRef.current = false; // Reset flag when shuffleDate changes
 
       const calculateTimeLeft = () => {
         const now = new Date().getTime();
@@ -148,15 +149,15 @@ const Bidding = ({ groupId }) => {
         console.log('Current time:', new Date(now));
         console.log('Shuffle time:', new Date(shuffleTime));
 
-        if (difference <= 0 && !hasSelectedWinner) {
+        if (difference <= 0 && !hasSelectedWinnerRef.current) {
           setTimeLeft(null);
-          hasSelectedWinner = true; // Set flag to prevent multiple calls
+          hasSelectedWinnerRef.current = true; // Set flag to prevent multiple calls
           // Call selectWinner mutation when time is up
           selectWinner({
             variables: { groupId }
           }).catch(error => {
             console.error('Failed to select winner:', error);
-            hasSelectedWinner = false; // Reset flag if there's an error
+            hasSelectedWinnerRef.current = false; // Reset flag if there's an error
           });
           return;
         }
@@ -175,7 +176,7 @@ const Bidding = ({ groupId }) => {
 
       return () => {
         clearInterval(timer);
-        hasSelectedWinner = false; // Reset flag when component unmounts
+        hasSelectedWinnerRef.current = false; // Reset flag when component unmounts
       };
     }
   }, [groupData?.groupDetails?.shuffleDate, groupId, selectWinner]);

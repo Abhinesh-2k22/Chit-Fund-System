@@ -229,25 +229,6 @@ const GroupDetails = () => {
   });
 
   useEffect(() => {
-    if (groupData?.groupDetails) {
-      setEditName(groupData.groupDetails.name);
-      setEditPoolAmount(groupData.groupDetails.totalPoolAmount);
-      setEditTotalMonths(groupData.groupDetails.totalMonths);
-    }
-  }, [groupData]);
-
-  useEffect(() => {
-    if (searchQuery.trim()) {
-      debouncedSearch(searchQuery);
-    } else {
-      setSearchResults([]);
-    }
-    return () => {
-      debouncedSearch.cancel();
-    };
-  }, [searchQuery, debouncedSearch]);
-
-  useEffect(() => {
     if (groupPendingInvitesData?.groupPendingInvites) {
       setGroupPendingInvitations(new Set(groupPendingInvitesData.groupPendingInvites));
     }
@@ -319,6 +300,13 @@ const GroupDetails = () => {
         ? prev.filter((m) => m !== month)
         : [...prev, month]
     );
+  };
+
+  const handleEditClick = () => {
+    setEditName(group.name);
+    setEditPoolAmount(group.totalPoolAmount);
+    setEditTotalMonths(group.totalMonths);
+    setIsEditing(true);
   };
 
   const sidebarItems = [
@@ -423,7 +411,7 @@ const GroupDetails = () => {
                       <h2 className="text-xl font-semibold text-gray-800">Group Details</h2>
                       {isOwner && isWaiting && (
                         <button
-                          onClick={() => setIsEditing(!isEditing)}
+                          onClick={isEditing ? () => setIsEditing(false) : handleEditClick}
                           className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors flex items-center text-sm"
                         >
                           <FaEdit className="mr-2" />
