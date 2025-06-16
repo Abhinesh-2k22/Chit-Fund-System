@@ -149,7 +149,6 @@ const GroupDetails = () => {
 
   const { data: allBidDetailsData, loading: allBidDetailsLoading, error: allBidDetailsError } = useQuery(GET_ALL_BID_DETAILS, {
     variables: { groupId },
-    skip: groupData?.groupDetails?.status !== 'started',
     pollInterval: 2000,
     fetchPolicy: 'network-only'
   });
