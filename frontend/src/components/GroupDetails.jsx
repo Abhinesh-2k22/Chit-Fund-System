@@ -131,6 +131,8 @@ const GroupDetails = () => {
   const [invitingUsers, setInvitingUsers] = useState(new Set());
   const [groupPendingInvitations, setGroupPendingInvitations] = useState(new Set());
   const [expandedMonths, setExpandedMonths] = useState([]);
+  const [searchError, setSearchError] = useState('');
+  const [searchSuccess, setSearchSuccess] = useState('');
 
   const { data: groupData, loading: groupLoading, error: groupError } = useQuery(GET_GROUP_DETAILS, {
     variables: { groupId },
@@ -164,6 +166,40 @@ const GroupDetails = () => {
     },
   });
 
+  const { loading: searchLoading, data: searchData, refetch: searchRefetch } = useQuery(SEARCH_USER, {
+    variables: { emailOrMobile: searchQuery },
+    skip: !searchQuery,
+    onError: (error) => {
+      setSearchError(error.message);
+      setSearchSuccess('');
+    }
+  });
+
+  const debouncedSearch = useCallback(
+    debounce((query) => {
+      if (query.trim()) {
+        searchRefetch();
+      }
+    }, 300),
+    []
+  );
+
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      debouncedSearch(searchQuery);
+    }
+    return () => {
+      debouncedSearch.cancel();
+    };
+  }, [searchQuery, debouncedSearch]);
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      searchRefetch();
+    }
+  };
+
   const [inviteToGroupMutation] = useMutation(INVITE_TO_GROUP, {
     onCompleted: (data, { variables }) => {
       const invitedUsername = variables.username;
@@ -176,12 +212,14 @@ const GroupDetails = () => {
       }
 
       if (data.inviteToGroup) {
-        console.log('Invitation sent successfully!');
+        setSearchSuccess('Invitation sent successfully!');
+        setSearchError('');
         setGroupPendingInvitations(prev => new Set(prev).add(invitedUsername));
         refetch();
         connectionsRefetch();
       } else {
-        console.log('Invitation could not be sent (e.g., user already invited/participant).');
+        setSearchError('Invitation could not be sent (e.g., user already invited/participant).');
+        setSearchSuccess('');
       }
     },
     onError: (err) => {
@@ -193,30 +231,10 @@ const GroupDetails = () => {
           return newSet;
         });
       }
-      console.error(`Error inviting user: ${err.message}`);
+      setSearchError(err.message);
+      setSearchSuccess('');
     },
   });
-
-  const [searchUserQuery, { loading: searchLoading, data: searchData }] = useLazyQuery(SEARCH_USER, {
-    onCompleted: (data) => {
-      setSearchResults(data.searchUser);
-    },
-    onError: (err) => {
-      console.error(`Error searching users: ${err.message}`);
-      setSearchResults([]);
-    },
-  });
-
-  const debouncedSearch = useCallback(
-    debounce((query) => {
-      if (query.trim()) {
-        searchUserQuery({ variables: { emailOrMobile: query } });
-      } else {
-        setSearchResults([]);
-      }
-    }, 500),
-    [searchUserQuery]
-  );
 
   const [startGroupMutation] = useMutation(START_GROUP, {
     onCompleted: () => {
@@ -259,12 +277,6 @@ const GroupDetails = () => {
         totalMonths: parseInt(editTotalMonths, 10),
       },
     });
-  };
-
-  const handleSearchUsers = () => {
-    if (searchQuery.trim()) {
-      debouncedSearch(searchQuery);
-    }
   };
 
   const handleInviteUser = async (usernameToInvite) => {
@@ -492,66 +504,67 @@ const GroupDetails = () => {
                     
                     {isOwner && isWaiting && (
                       <div className="mt-8 border-t border-gray-200 pt-8">
-                        <h3 className="text-lg font-semibold text-gray-800 mb-4">Invite New Members</h3>
                         
                         {/* Search Section */}
-                        <div className="mb-6">
-                          <div className="flex items-center space-x-2">
-                            <input
-                              type="text"
-                              placeholder="Search user by username, email or mobile..."
-                              value={searchQuery}
-                              onChange={(e) => setSearchQuery(e.target.value)}
-                              className="flex-1 border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                            />
+                        <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
+                          <h2 className="text-2xl font-bold text-gray-900 mb-4">Invite New Members</h2>
+                          <form onSubmit={handleSearch} className="flex gap-4">
+                            <div className="flex-1">
+                              <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="Search by username, email or mobile number"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                              />
+                            </div>
                             <button
-                              onClick={() => debouncedSearch(searchQuery)}
-                              className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors flex items-center"
+                              type="submit"
                               disabled={searchLoading}
+                              className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 flex items-center gap-2"
                             >
-                              <FaSearch className="mr-2" /> 
+                              <FaSearch />
                               {searchLoading ? 'Searching...' : 'Search'}
                             </button>
-                          </div>
+                          </form>
 
-                          {searchResults.length > 0 && (
-                            <div className="mt-4 bg-gray-50 rounded-md p-4">
-                              <p className="text-sm font-medium text-gray-700 mb-2">Search Results:</p>
-                              <ul className="space-y-2">
-                                {searchResults.map((searchUser) => {
-                                  const isInvited = groupPendingInvitations.has(searchUser.username);
-                                  const isDisabled = invitingUsers.has(searchUser.username) || isInvited || participants.some(p => p.username === searchUser.username);
-                                  const buttonClassName = `px-3 py-1.5 rounded-md transition-colors flex items-center text-sm ${
-                                    isDisabled
-                                      ? 'bg-gray-400 text-white cursor-not-allowed'
-                                      : 'bg-green-500 text-white hover:bg-green-600'
-                                  }`;
-                                  console.log(`Search User: ${searchUser.username}, isInvited: ${isInvited}, isDisabled: ${isDisabled}, groupPendingInvitations:`, Array.from(groupPendingInvitations));
-                                  return (
-                                    <li key={searchUser.id} className="flex justify-between items-center bg-white p-3 rounded-md shadow-sm border border-gray-100">
-                                      <div>
-                                        <span className="font-medium text-gray-900">{searchUser.username}</span>
-                                      </div>
-                                      {participants.length < group.totalMonths ? (
-                                        <button
-                                          onClick={() => handleInviteUser(searchUser.username)}
-                                          disabled={isDisabled}
-                                          className={buttonClassName}
-                                        >
-                                          <FaUserPlus className="mr-2" /> 
-                                          {invitingUsers.has(searchUser.username) ? 'Sending...' :
-                                            (isInvited ? 'Invited' : 'Invite')}
-                                        </button>
-                                      ) : (
-                                        <span className="text-sm text-gray-500">Group Full</span>
-                                      )}
-                                    </li>
-                                  );
-                                })}
-                                {searchResults.length === 0 && searchQuery.length > 0 && (
-                                  <li className="text-center text-gray-500">No users found matching your search.</li>
-                                )}
-                              </ul>
+                          {searchError && (
+                            <div className="mt-4 p-4 bg-red-50 text-red-600 rounded-md">
+                              {searchError}
+                            </div>
+                          )}
+
+                          {searchSuccess && (
+                            <div className="mt-4 p-4 bg-green-50 text-green-600 rounded-md">
+                              {searchSuccess}
+                            </div>
+                          )}
+
+                          {searchData?.searchUser && searchData.searchUser.length > 0 && (
+                            <div className="mt-4 space-y-4">
+                              {searchData.searchUser.map((user) => (
+                                <div key={user.username} className="p-4 bg-gray-50 rounded-md">
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <h3 className="font-semibold text-lg text-black">{user.username}</h3>
+                                    </div>
+                                    {!isAlreadyParticipantOrInvited(user.username) ? (
+                                      <button
+                                        onClick={() => handleInviteUser(user.username)}
+                                        disabled={invitingUsers.has(user.username)}
+                                        className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 flex items-center gap-2"
+                                      >
+                                        <FaUserPlus />
+                                        {invitingUsers.has(user.username) ? 'Inviting...' : 'Invite'}
+                                      </button>
+                                    ) : (
+                                      <span className="px-4 py-2 bg-gray-200 text-gray-600 rounded-md">
+                                        Already Invited/Participant
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                           )}
                         </div>

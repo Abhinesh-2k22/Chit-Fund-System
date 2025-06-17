@@ -55,6 +55,12 @@ const GET_WINNING_BIDS = gql`
   }
 `;
 
+const GET_SHOULD_SELECT_WINNER = gql`
+  query ShouldSelectWinner($groupId: ID!) {
+    shouldSelectWinner(groupId: $groupId)
+  }
+`;
+
 const PLACE_BID = gql`
   mutation PlaceBid($groupId: ID!, $bidAmount: Float!) {
     placeBid(groupId: $groupId, bidAmount: $bidAmount) {
@@ -78,7 +84,7 @@ const Bidding = ({ groupId }) => {
   const [socket, setSocket] = useState(null);
   const [timeLeft, setTimeLeft] = useState(null);
   const { user } = useAuth();
-  const hasSelectedWinnerRef = useRef(false); // Persist flag across renders
+  const hasSelectedWinnerRef = useRef(false);
 
   const { data: groupData, loading: groupLoading } = useQuery(GET_GROUP_DETAILS, {
     variables: { groupId },
@@ -103,6 +109,12 @@ const Bidding = ({ groupId }) => {
     skip: groupData?.groupDetails?.status !== 'started',
     pollInterval: 2000,
     fetchPolicy: 'network-only'
+  });
+
+  const { data: shouldSelectWinnerData, loading: shouldSelectWinnerLoading } = useQuery(GET_SHOULD_SELECT_WINNER, {
+    variables: { groupId },
+    pollInterval: 2000,
+    skip: groupData?.groupDetails?.status !== 'started'
   });
 
   const [placeBid] = useMutation(PLACE_BID, {
@@ -132,33 +144,29 @@ const Bidding = ({ groupId }) => {
     }
   });
 
-  // Calculate time left until shuffle date
+  // Effect to trigger winner selection when it's time
   useEffect(() => {
-    console.log('Group Data:', groupData?.groupDetails);
-    console.log('Shuffle Date:', groupData?.groupDetails?.shuffleDate);
-    
-    if (groupData?.groupDetails?.shuffleDate) {
-      hasSelectedWinnerRef.current = false; // Reset flag when shuffleDate changes
+    if (shouldSelectWinnerData?.shouldSelectWinner && !hasSelectedWinnerRef.current) {
+      hasSelectedWinnerRef.current = true;
+      selectWinner({
+        variables: { groupId }
+      }).catch(error => {
+        console.error('Failed to select winner:', error);
+        hasSelectedWinnerRef.current = false;
+      });
+    }
+  }, [shouldSelectWinnerData, groupId, selectWinner]);
 
+  // Effect to calculate and display countdown
+  useEffect(() => {
+    if (groupData?.groupDetails?.shuffleDate) {
       const calculateTimeLeft = () => {
         const now = new Date().getTime();
         const shuffleTime = new Date(groupData.groupDetails.shuffleDate).getTime();
         const difference = shuffleTime - now;
 
-        console.log('Time difference:', difference);
-        console.log('Current time:', new Date(now));
-        console.log('Shuffle time:', new Date(shuffleTime));
-
-        if (difference <= 0 && !hasSelectedWinnerRef.current) {
+        if (difference <= 0) {
           setTimeLeft(null);
-          hasSelectedWinnerRef.current = true; // Set flag to prevent multiple calls
-          // Call selectWinner mutation when time is up
-          selectWinner({
-            variables: { groupId }
-          }).catch(error => {
-            console.error('Failed to select winner:', error);
-            hasSelectedWinnerRef.current = false; // Reset flag if there's an error
-          });
           return;
         }
 
@@ -167,7 +175,6 @@ const Bidding = ({ groupId }) => {
         const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
         const seconds = Math.floor((difference % (1000 * 60)) / 1000);
 
-        console.log('Time left:', { days, hours, minutes, seconds });
         setTimeLeft({ days, hours, minutes, seconds });
       };
 
@@ -176,10 +183,9 @@ const Bidding = ({ groupId }) => {
 
       return () => {
         clearInterval(timer);
-        hasSelectedWinnerRef.current = false; // Reset flag when component unmounts
       };
     }
-  }, [groupData?.groupDetails?.shuffleDate, groupId, selectWinner]);
+  }, [groupData?.groupDetails?.shuffleDate]);
 
   // Initialize Socket.IO connection
   useEffect(() => {

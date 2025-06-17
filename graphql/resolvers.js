@@ -95,11 +95,7 @@ const resolvers = {
         _id: { $ne: user.id }
       }).select('username email mobile');
 
-      if (!foundUsers || foundUsers.length === 0) {
-        throw new Error('No users found');
-      }
-
-      return foundUsers;
+      return foundUsers || [];
     },
 
     pendingConnectionRequests: async (_, __, { user }) => {
@@ -632,7 +628,53 @@ const resolvers = {
         console.error('Error fetching all bid details:', error);
         throw new Error('Failed to fetch all bid details');
       }
-    }
+    },
+
+    shouldSelectWinner: async (_, { groupId }, { user }) => {
+      if (!user) throw new Error('Not authenticated');
+      
+      try {
+        // Check if user is a participant in the group
+        const isParticipant = await isGroupParticipant(groupId, user.username);
+        if (!isParticipant) {
+          throw new Error('Not authorized to check winner selection for this group');
+        }
+
+        // Get the group details
+        const group = await Group.findById(groupId);
+        if (!group) {
+          throw new Error('Group not found');
+        }
+
+        // Check if group is in started status
+        if (group.status !== 'started') {
+          return false;
+        }
+
+        // Get server time and compare with shuffle date
+        const serverTime = new Date();
+        const shuffleTime = new Date(group.shuffleDate);
+        
+        // Check if shuffle time has passed
+        const shouldSelect = serverTime >= shuffleTime;
+
+        // If it's time to select winner, also check if a winner already exists for this month
+        if (shouldSelect) {
+          const [existingWinner] = await pool.query(
+            'SELECT id FROM bids WHERE group_id = ? AND current_month = ? AND is_winner = 1',
+            [groupId, group.currentmonth]
+          );
+          
+          // Only return true if no winner exists for current month
+          return existingWinner.length === 0;
+        }
+
+        return false;
+      } catch (error) {
+        console.error('Error checking winner selection:', error);
+        throw new Error(error.message || 'Failed to check winner selection');
+      }
+    },
   },
 
   Mutation: {
@@ -1240,9 +1282,18 @@ const resolvers = {
     selectWinner: async (_, { groupId }, { user }) => {
       if (!user) throw new Error('Not authenticated');
       
+      const connection = await pool.getConnection();
       try {
-        console.log('Starting selectWinner mutation for group:', groupId);
-        
+        // Try to acquire a lock for this group (timeout after 10 seconds)
+        const [lockResult] = await connection.query(
+          'SELECT GET_LOCK(?, 10) as lockAcquired',
+          [`group_${groupId}_lock`]
+        );
+
+        if (!lockResult[0].lockAcquired) {
+          throw new Error('Could not acquire lock for group processing');
+        }
+
         // Check if user is a participant in the group
         const isParticipant = await isGroupParticipant(groupId, user.username);
         if (!isParticipant) {
@@ -1255,35 +1306,45 @@ const resolvers = {
           throw new Error('Group not found');
         }
 
-        console.log('Current group state:', {
-          status: group.status,
-          currentmonth: group.currentmonth,
-          totalMonths: group.totalMonths,
-          shuffleDate: group.shuffleDate
-        });
-
         // Check if group is in started status
         if (group.status !== 'started') {
           throw new Error('Group is not in started status');
         }
 
-        // Get all winners so far
-        const winners = await resolvers.Query.isWinner(null, { groupId }, { user });
-        console.log('Current winners:', winners);
+        // Verify using server time that it's actually time to select a winner
+        const serverTime = new Date();
+        const shuffleTime = new Date(group.shuffleDate);
+        
+        if (serverTime < shuffleTime) {
+          throw new Error('It is not yet time to select a winner');
+        }
 
-        // Get all participants
-        const participants = await getGroupParticipants(groupId);
-        console.log('All participants:', participants);
+        // Check if a winner already exists for this month
+        const [existingWinner] = await connection.query(
+          'SELECT id FROM bids WHERE group_id = ? AND current_month = ? AND is_winner = 1',
+          [groupId, group.currentmonth]
+        );
 
-        // Get the current lowest bid using existing query
-        const currentBid = await resolvers.Query.getCurrentBid(null, { groupId }, { user });
-        console.log('Current lowest bid:', currentBid);
+        if (existingWinner.length > 0) {
+          console.log('Winner already selected for this month, skipping processing');
+          return true;
+        }
 
-        // Start a transaction
-        const connection = await pool.getConnection();
         await connection.beginTransaction();
 
         try {
+          // Get all winners so far
+          const winners = await resolvers.Query.isWinner(null, { groupId }, { user });
+          console.log('Current winners:', winners);
+
+          // Get all participants
+          const participants = await getGroupParticipants(groupId);
+          console.log('All participants:', participants);
+
+          // Get the current lowest bid using existing query
+          const currentBid = await resolvers.Query.getCurrentBid(null, { groupId }, { user });
+          console.log('Current lowest bid:', currentBid);
+
           let winnerSelected = false;
 
           // If current month equals total months, select the last non-winner
@@ -1478,21 +1539,21 @@ const resolvers = {
             });
           }
 
-          // Commit transaction
           await connection.commit();
-          console.log('Transaction committed successfully');
           return true;
         } catch (error) {
-          // Rollback in case of error
-          console.error('Error in transaction, rolling back:', error);
           await connection.rollback();
           throw error;
         } finally {
+          // Release the lock
+          await connection.query('SELECT RELEASE_LOCK(?)', [`group_${groupId}_lock`]);
           connection.release();
         }
       } catch (error) {
-        console.error('Error in selectWinner mutation:', error);
-        throw new Error(error.message || 'Failed to select winner');
+        // Release the lock in case of error
+        await connection.query('SELECT RELEASE_LOCK(?)', [`group_${groupId}_lock`]);
+        connection.release();
+        throw error;
       }
     }
   }

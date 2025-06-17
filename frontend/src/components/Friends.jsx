@@ -193,12 +193,6 @@ const Friends = () => {
                 ))}
               </div>
             )}
-
-            {searchData?.searchUser && searchData.searchUser.length === 0 && (
-              <div className="mt-4 p-4 bg-gray-50 text-gray-600 rounded-md text-center">
-                No users found
-              </div>
-            )}
           </div>
 
           {/* Connections Section */}

@@ -67,8 +67,9 @@ const typeDefs = gql`
     # Bidding queries
     getCurrentBid(groupId: ID!): Bid
     getBidHistory(groupId: ID!): [Bid!]!
-    isWinner(groupId: ID!): [Bid]
+    isWinner(groupId: ID!): [Bid!]!
     getAllBidDetails(groupId: ID!): [Bid!]!
+    shouldSelectWinner(groupId: ID!): Boolean!
   }
 
   type Mutation {
